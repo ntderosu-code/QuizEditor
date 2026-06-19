@@ -7,15 +7,43 @@ import QuizEditorCore
 import FoundationModels
 #endif
 
+extension UTType {
+    /// The app's native document type. Must match UTExportedTypeDeclarations in Info.plist.
+    static let quizEditorDocument = UTType(exportedAs: "com.byronroush.quizeditor.quiz")
+}
+
+/// The document-based wrapper around a `Quiz`, persisted as pretty-printed JSON.
+struct QuizDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.quizEditorDocument] }
+    static var writableContentTypes: [UTType] { [.quizEditorDocument] }
+
+    var quiz: Quiz
+
+    init() {
+        quiz = Quiz(title: "Untitled Quiz", questions: [])
+    }
+
+    init(configuration: ReadConfiguration) throws {
+        guard let data = configuration.file.regularFileContents else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        quiz = try JSONDecoder().decode(Quiz.self, from: data)
+    }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return FileWrapper(regularFileWithContents: try encoder.encode(quiz))
+    }
+}
+
 @main
 struct QuizEditorApp: App {
     var body: some Scene {
-        WindowGroup {
-            ContentView()
+        DocumentGroup(newDocument: QuizDocument()) { file in
+            ContentView(quiz: file.$document.quiz)
                 .frame(minWidth: 980, minHeight: 680)
         }
-        .defaultSize(width: 1240, height: 780)
-        .windowResizability(.contentMinSize)
         .windowToolbarStyle(.unified)
         .commands {
             CommandGroup(after: .help) {
@@ -90,8 +118,8 @@ struct AcknowledgementsView: View {
 }
 
 struct ContentView: View {
-    @State private var quiz = Quiz.sample
-    @State private var selectedQuestionID: UUID? = Quiz.sample.questions.first?.id
+    @Binding var quiz: Quiz
+    @State private var selectedQuestionID: UUID?
     @State private var isImporterPresented = false
     @State private var isQTIImporterPresented = false
     @State private var importText = sampleImportText
@@ -102,7 +130,6 @@ struct ContentView: View {
     @State private var correctMarkerLocation = CorrectAnswerMarker.Location.beginningOfLine
     @State private var isAIPanelVisible = true
     @State private var importPreservesFormatting = true
-    @State private var documentURL: URL?
     @State private var isPreviewPresented = false
 
     var body: some View {
@@ -134,27 +161,8 @@ struct ContentView: View {
                 } label: {
                     Label("Add Question", systemImage: "plus")
                 }
-                .keyboardShortcut("n", modifiers: [.command])
-                .help("Add a new question (⌘N)")
-
-                Button {
-                    openQuiz()
-                } label: {
-                    Label("Open Quiz", systemImage: "folder")
-                }
-                .keyboardShortcut("o", modifiers: [.command])
-                .help("Open a saved quiz (⌘O)")
-
-                Menu {
-                    Button("Save As…") { saveQuizAs() }
-                        .keyboardShortcut("s", modifiers: [.command, .shift])
-                } label: {
-                    Label("Save Quiz", systemImage: "square.and.arrow.down")
-                } primaryAction: {
-                    saveQuiz()
-                }
-                .keyboardShortcut("s", modifiers: [.command])
-                .help("Save the quiz (⌘S) — hold for Save As")
+                .keyboardShortcut("n", modifiers: [.command, .shift])
+                .help("Add a new question (⇧⌘N)")
 
                 Divider()
 
@@ -234,6 +242,11 @@ struct ContentView: View {
         }
         .safeAreaInset(edge: .bottom) {
             StatusBar(message: statusMessage)
+        }
+        .onAppear {
+            if selectedQuestionID == nil {
+                selectedQuestionID = quiz.questions.first?.id
+            }
         }
         .sheet(isPresented: $isImporterPresented) {
             ImportSheet(
@@ -348,55 +361,6 @@ struct ContentView: View {
             statusMessage = "Imported \(questionCount(quiz.questions.count)) from marked text."
         } catch {
             statusMessage = "Import failed: \(error)"
-        }
-    }
-
-    // MARK: - Save / Open quiz document
-
-    private static let quizDocumentType = UTType(filenameExtension: "quizeditor") ?? .json
-
-    private func saveQuiz() {
-        if let documentURL {
-            writeQuiz(to: documentURL)
-        } else {
-            saveQuizAs()
-        }
-    }
-
-    private func saveQuizAs() {
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [Self.quizDocumentType]
-        panel.nameFieldStringValue = (defaultExportFilename as NSString).deletingPathExtension + ".quizeditor"
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        documentURL = url
-        writeQuiz(to: url)
-    }
-
-    private func writeQuiz(to url: URL) {
-        do {
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            try encoder.encode(quiz).write(to: url, options: .atomic)
-            statusMessage = "Saved \(url.lastPathComponent)."
-        } catch {
-            statusMessage = "Save failed: \(error.localizedDescription)"
-        }
-    }
-
-    private func openQuiz() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [Self.quizDocumentType, .json]
-        panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        do {
-            let data = try Data(contentsOf: url)
-            quiz = try JSONDecoder().decode(Quiz.self, from: data)
-            documentURL = url
-            selectedQuestionID = quiz.questions.first?.id
-            statusMessage = "Opened \(url.lastPathComponent)."
-        } catch {
-            statusMessage = "Could not open quiz: \(error.localizedDescription)"
         }
     }
 
