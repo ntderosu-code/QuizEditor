@@ -102,6 +102,8 @@ struct ContentView: View {
     @State private var correctMarkerLocation = CorrectAnswerMarker.Location.beginningOfLine
     @State private var isAIPanelVisible = true
     @State private var importPreservesFormatting = true
+    @State private var documentURL: URL?
+    @State private var isPreviewPresented = false
 
     var body: some View {
         HSplitView {
@@ -135,6 +137,25 @@ struct ContentView: View {
                 .keyboardShortcut("n", modifiers: [.command])
                 .help("Add a new question (⌘N)")
 
+                Button {
+                    openQuiz()
+                } label: {
+                    Label("Open Quiz", systemImage: "folder")
+                }
+                .keyboardShortcut("o", modifiers: [.command])
+                .help("Open a saved quiz (⌘O)")
+
+                Menu {
+                    Button("Save As…") { saveQuizAs() }
+                        .keyboardShortcut("s", modifiers: [.command, .shift])
+                } label: {
+                    Label("Save Quiz", systemImage: "square.and.arrow.down")
+                } primaryAction: {
+                    saveQuiz()
+                }
+                .keyboardShortcut("s", modifiers: [.command])
+                .help("Save the quiz (⌘S) — hold for Save As")
+
                 Divider()
 
                 Button {
@@ -163,16 +184,30 @@ struct ContentView: View {
                 .help("Import a Canvas QTI .zip package — keep formatting or import as plain text")
 
                 Menu {
-                    ForEach(CanvasQuizEngine.allCases) { engine in
-                        Button(engine.displayName) {
-                            prepareExport(engine: engine)
+                    Section("Canvas QTI Package") {
+                        ForEach(CanvasQuizEngine.allCases) { engine in
+                            Button(engine.displayName) {
+                                prepareExport(engine: engine)
+                            }
                         }
+                    }
+                    Divider()
+                    Button("Formatted Document (HTML)…") {
+                        exportFormattedDocument()
                     }
                 } label: {
                     Label("Export", systemImage: "square.and.arrow.up")
                 }
                 .menuIndicator(.hidden)
-                .help("Export as a Canvas QTI package")
+                .help("Export as a Canvas QTI package or a formatted document")
+
+                Button {
+                    isPreviewPresented = true
+                } label: {
+                    Label("Preview", systemImage: "eye")
+                }
+                .keyboardShortcut("p", modifiers: [.command, .shift])
+                .help("Preview a formatted version of the quiz (⇧⌘P)")
 
                 Divider()
 
@@ -227,6 +262,14 @@ struct ContentView: View {
             case .failure(let error): statusMessage = "Export failed: \(error.localizedDescription)"
             }
         }
+        .sheet(isPresented: $isPreviewPresented) {
+            QuizPreviewSheet(quiz: quiz, selectedQuestion: selectedQuestionForPreview)
+        }
+    }
+
+    private var selectedQuestionForPreview: (number: Int, question: QuizQuestion)? {
+        guard let index = quiz.questions.firstIndex(where: { $0.id == selectedQuestionID }) else { return nil }
+        return (index + 1, quiz.questions[index])
     }
 
     @ViewBuilder
@@ -305,6 +348,69 @@ struct ContentView: View {
             statusMessage = "Imported \(questionCount(quiz.questions.count)) from marked text."
         } catch {
             statusMessage = "Import failed: \(error)"
+        }
+    }
+
+    // MARK: - Save / Open quiz document
+
+    private static let quizDocumentType = UTType(filenameExtension: "quizeditor") ?? .json
+
+    private func saveQuiz() {
+        if let documentURL {
+            writeQuiz(to: documentURL)
+        } else {
+            saveQuizAs()
+        }
+    }
+
+    private func saveQuizAs() {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [Self.quizDocumentType]
+        panel.nameFieldStringValue = (defaultExportFilename as NSString).deletingPathExtension + ".quizeditor"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        documentURL = url
+        writeQuiz(to: url)
+    }
+
+    private func writeQuiz(to url: URL) {
+        do {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            try encoder.encode(quiz).write(to: url, options: .atomic)
+            statusMessage = "Saved \(url.lastPathComponent)."
+        } catch {
+            statusMessage = "Save failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func openQuiz() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [Self.quizDocumentType, .json]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let data = try Data(contentsOf: url)
+            quiz = try JSONDecoder().decode(Quiz.self, from: data)
+            documentURL = url
+            selectedQuestionID = quiz.questions.first?.id
+            statusMessage = "Opened \(url.lastPathComponent)."
+        } catch {
+            statusMessage = "Could not open quiz: \(error.localizedDescription)"
+        }
+    }
+
+    private func exportFormattedDocument() {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.html]
+        panel.nameFieldStringValue = (defaultExportFilename as NSString).deletingPathExtension + ".html"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let document = FormattedDocumentBuilder().document(for: quiz)
+            try document.write(to: url, atomically: true, encoding: .utf8)
+            statusMessage = "Exported formatted document to \(url.lastPathComponent)."
+        } catch {
+            statusMessage = "Document export failed: \(error.localizedDescription)"
         }
     }
 
@@ -470,6 +576,7 @@ struct QuestionEditor: View {
     @State private var reviewError: String?
     @State private var reviewPresentation: ReviewPresentation?
     @State private var undoSnapshot: QuizQuestion?
+    @State private var isFeedbackExpanded = false
 
     var body: some View {
         ScrollView {
@@ -551,7 +658,13 @@ struct QuestionEditor: View {
                     AnswerEditor(question: $question)
                 }
 
-                RichTextField(title: "Feedback", text: $question.feedback, minHeight: 140)
+                DisclosureGroup(isExpanded: $isFeedbackExpanded) {
+                    RichTextField(title: "Feedback", text: $question.feedback, minHeight: 140, showsTitle: false)
+                        .padding(.top, 8)
+                } label: {
+                    Text("Feedback")
+                        .font(.subheadline.weight(.semibold))
+                }
             }
             .padding(24)
         }
@@ -1342,6 +1455,7 @@ struct RichTextField: View {
     let title: String
     @Binding var text: String
     var minHeight: CGFloat = 160
+    var showsTitle: Bool = true
 
     @StateObject private var controller = RichTextController()
     @State private var isImageSheetPresented = false
@@ -1352,9 +1466,11 @@ struct RichTextField: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text(title)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if showsTitle {
+                    Text(title)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 Spacer()
                 formattingToolbar
             }
@@ -1512,6 +1628,81 @@ struct ImageInsertSheet: View {
             .replacingOccurrences(of: "&", with: "&amp;")
             .replacingOccurrences(of: "\"", with: "&quot;")
             .replacingOccurrences(of: "<", with: "&lt;")
+    }
+}
+
+/// Renders a complete HTML document (used for the formatted preview).
+struct FullHTMLPreview: NSViewRepresentable {
+    let html: String
+
+    func makeNSView(context: Context) -> WKWebView {
+        WKWebView()
+    }
+
+    func updateNSView(_ webView: WKWebView, context: Context) {
+        webView.loadHTMLString(html, baseURL: nil)
+    }
+}
+
+/// Modal that previews a formatted version of one question or the full quiz.
+struct QuizPreviewSheet: View {
+    let quiz: Quiz
+    let selectedQuestion: (number: Int, question: QuizQuestion)?
+    @Environment(\.dismiss) private var dismiss
+
+    private enum Scope: Hashable { case fullQuiz, question }
+    @State private var scope: Scope = .fullQuiz
+    @State private var showAnswerKey = true
+    private let builder = FormattedDocumentBuilder()
+
+    private var html: String {
+        switch scope {
+        case .question:
+            if let selected = selectedQuestion {
+                return builder.document(for: selected.question, number: selected.number, showAnswerKey: showAnswerKey)
+            }
+            return builder.document(for: quiz, showAnswerKey: showAnswerKey)
+        case .fullQuiz:
+            return builder.document(for: quiz, showAnswerKey: showAnswerKey)
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("Preview")
+                    .font(.title2.bold())
+                Spacer()
+                Button("Done") { dismiss() }
+                    .keyboardShortcut(.defaultAction)
+            }
+            .padding(20)
+
+            Divider()
+
+            HStack {
+                Picker("Scope", selection: $scope) {
+                    Text("Full Quiz").tag(Scope.fullQuiz)
+                    Text("This Question").tag(Scope.question)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .disabled(selectedQuestion == nil)
+                .frame(width: 280)
+
+                Spacer()
+
+                Toggle("Show answer key", isOn: $showAnswerKey)
+                    .toggleStyle(.switch)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+
+            Divider()
+
+            FullHTMLPreview(html: html)
+        }
+        .frame(minWidth: 720, minHeight: 640)
     }
 }
 

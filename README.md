@@ -14,8 +14,10 @@ A native macOS app for authoring, reviewing, and round-tripping **Canvas QTI qui
 - **Rich text (WYSIWYG)** — bold, italics, underline, lists, links, tables, and embedded images for prompts and feedback. Formatting round-trips through QTI.
 - **Accessible by design** — alt text is *required* on images before export; VoiceOver labels, Dynamic Type, full keyboard operation, and color that is never the sole signal.
 - **AI review** — per-question review against established item-writing guidelines (not just grammar), with a before/after diff and per-field "apply." Works with an OpenAI-compatible API, Apple Foundation Models, or copy/paste to another assistant.
+- **Save & open** — store a quiz as a `.quizeditor` document (JSON) and reopen it later.
 - **Import** — Canvas QTI `.zip` packages (handles both per-file and single-file inline layouts), with a *keep formatting* or *plain text* option for messy sources. Also imports simple marked plain text.
-- **Export** — Canvas Classic (QTI 1.2) and New Quizzes (QTI 2.1) packages as `.zip`.
+- **Export** — Canvas Classic (QTI 1.2) and New Quizzes (QTI 2.1) packages as `.zip`, plus a formatted, printable **HTML document**.
+- **Preview** — a modal that renders a formatted version of the current question or the full quiz, with an optional answer key.
 
 ### AI review with a before/after diff
 
