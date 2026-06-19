@@ -6,6 +6,8 @@ Write questions with rich text and images, get AI-assisted item-writing feedback
 
 [View on GitHub](https://github.com/ntderosu-code/QuizEditor){: .btn }
 
+![Quiz Editor main window](screenshots/editor.png)
+
 ---
 
 ## What it does
@@ -26,10 +28,18 @@ swift run QuizEditorApp
 
 Requires macOS 14+ and a Swift 6 toolchain.
 
+## AI review with a before/after diff
+
+![AI Review sheet showing a before/after diff with per-field apply](screenshots/ai-review.png)
+
+## Import marked plain text
+
+![Import Marked Text dialog](screenshots/import.png)
+
 ## Why it exists
 
 Canvas quiz authoring and QTI interchange are finicky — formatting gets lost, accessibility is an afterthought, and writing good distractors is hard. Quiz Editor keeps the source of truth local, makes formatting and accessibility first-class, and puts an item-writing reviewer one click away.
 
 ---
 
-Released under the [MIT License](https://github.com/ntderosu-code/QuizEditor/blob/main/LICENSE). Built entirely on Apple frameworks; no third-party dependencies.
+Released under the [MIT License](https://github.com/ntderosu-code/QuizEditor/blob/main/LICENSE) © 2026 Byron R Roush. Built entirely on Apple frameworks; no third-party dependencies.

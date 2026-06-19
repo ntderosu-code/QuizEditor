@@ -60,7 +60,7 @@ struct AcknowledgementsView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Quiz Editor")
                     .font(.title2.bold())
-                Text("Released under the MIT License. No third-party open-source libraries are bundled; the app is built entirely on Apple frameworks.")
+                Text("Released under the MIT License © 2026 Byron R Roush. No third-party open-source libraries are bundled; the app is built entirely on Apple frameworks.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

@@ -4,6 +4,8 @@ A native macOS app for authoring, reviewing, and round-tripping **Canvas QTI qui
 
 > Built entirely on Apple frameworks (SwiftUI, AppKit, WebKit). No third-party dependencies.
 
+![Quiz Editor main window — sidebar, question editor, and AI Assistant panel](docs/screenshots/editor.png)
+
 ## Features
 
 - **Question editing** — multiple choice, multiple answer, true/false, fill-in-the-blank, short answer, essay, and matching.
@@ -12,6 +14,14 @@ A native macOS app for authoring, reviewing, and round-tripping **Canvas QTI qui
 - **AI review** — per-question review against established item-writing guidelines (not just grammar), with a before/after diff and per-field "apply." Works with an OpenAI-compatible API, Apple Foundation Models, or copy/paste to another assistant.
 - **Import** — Canvas QTI `.zip` packages (handles both per-file and single-file inline layouts), with a *keep formatting* or *plain text* option for messy sources. Also imports simple marked plain text.
 - **Export** — Canvas Classic (QTI 1.2) and New Quizzes (QTI 2.1) packages as `.zip`.
+
+### AI review with a before/after diff
+
+![AI Review sheet showing a before/after diff with per-field apply](docs/screenshots/ai-review.png)
+
+### Import marked plain text
+
+![Import Marked Text dialog with a correct-answer marker and sample text](docs/screenshots/import.png)
 
 ## Requirements
 
@@ -56,6 +66,6 @@ WCAG 2.1 AA is treated as the floor. Images cannot be exported without alt text 
 
 ## License
 
-[MIT](LICENSE) © 2026 ntderosu-code
+[MIT](LICENSE) © 2026 Byron R Roush
 
 Third-party acknowledgements are listed in the app under **Help → Acknowledgements**.
