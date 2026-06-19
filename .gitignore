@@ -16,3 +16,6 @@ DerivedData/
 .serena/
 CLAUDE.md
 **/CLAUDE.md
+
+# Release artifacts
+dist/
