@@ -1,5 +1,7 @@
 # Quiz Editor
 
+<img src="docs/screenshots/app-icon.png" alt="Quiz Editor app icon: a bubble sheet / scantron" width="128" align="right">
+
 A native macOS app for authoring, reviewing, and round-tripping **Canvas QTI quizzes**. Write questions with rich text and images, get AI-assisted item-writing feedback, and import/export Canvas Classic (QTI 1.2) and New Quizzes (QTI 2.1) packages — with accessibility built in from the start.
 
 > Built entirely on Apple frameworks (SwiftUI, AppKit, WebKit). No third-party dependencies.
@@ -59,6 +61,25 @@ The AI Assistant panel supports three providers:
 - **Copy/Paste** — copies a prepared prompt for use in Claude, ChatGPT, or another assistant.
 
 API keys are stored on your machine and are only sent to the endpoint you configure.
+
+## App icon
+
+The icon is a bubble sheet / scantron, designed for Apple's **Icon Composer** (Liquid Glass). The editable source is `AppIcon.icon/`; the rendered `Resources/AppIcon.icns` is bundled into the app by `Scripts/run-macos-app.sh`.
+
+To regenerate the artwork and renditions:
+
+```sh
+# 1. Redraw the layer art (CoreGraphics)
+swift Scripts/generate-icon.swift /tmp/iconwork
+cp /tmp/iconwork/layer-foreground-1024.png AppIcon.icon/Assets/foreground.png
+
+# 2. Render renditions from the .icon with Icon Composer's CLI (ictool)
+ICT="/Applications/Xcode.app/Contents/Applications/Icon Composer.app/Contents/Executables/ictool"
+"$ICT" AppIcon.icon --export-image --output-file icon-1024.png \
+  --platform macOS --rendition Default --width 512 --height 512 --scale 2
+```
+
+Open `AppIcon.icon` in Icon Composer to tweak layers, gradient, and glass.
 
 ## Accessibility
 
