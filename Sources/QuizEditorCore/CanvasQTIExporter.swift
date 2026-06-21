@@ -212,7 +212,7 @@ public struct CanvasQTIExporter: Sendable {
                         <qtimetadatafield>
                             <fieldlabel>points_possible</fieldlabel>
                             <fieldentry>\(formatPoints(question.points))</fieldentry>
-                        </qtimetadatafield>
+                        </qtimetadatafield>\(metadataFields(for: question))
                     </qtimetadata>
                 </itemmetadata>
         \(presentation)
@@ -477,6 +477,32 @@ public struct CanvasQTIExporter: Sendable {
 
     private func formatPoints(_ points: Double) -> String {
         points.rounded() == points ? String(Int(points)) : String(points)
+    }
+
+    /// Optional Canvas-tolerated metadata fields for tags and difficulty. Canvas
+    /// ignores fields it doesn't recognize, so this is safe to always emit when
+    /// the question carries the metadata.
+    private func metadataFields(for question: QuizQuestion) -> String {
+        var fields: [String] = []
+        if let difficulty = question.difficulty {
+            fields.append("""
+
+                        <qtimetadatafield>
+                            <fieldlabel>difficulty</fieldlabel>
+                            <fieldentry>\(xmlEscape(difficulty.rawValue))</fieldentry>
+                        </qtimetadatafield>
+            """)
+        }
+        if !question.tags.isEmpty {
+            fields.append("""
+
+                        <qtimetadatafield>
+                            <fieldlabel>tags</fieldlabel>
+                            <fieldentry>\(xmlEscape(question.tags.joined(separator: ", ")))</fieldentry>
+                        </qtimetadatafield>
+            """)
+        }
+        return fields.joined()
     }
 }
 
