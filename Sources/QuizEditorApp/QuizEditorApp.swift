@@ -90,7 +90,7 @@ struct AcknowledgementsView: View {
         Credit(name: "SwiftUI, AppKit & WebKit", detail: "Apple's UI frameworks, used under the Apple SDK License."),
         Credit(name: "SF Symbols", detail: "Icon set © Apple Inc., used under the SF Symbols license."),
         Credit(name: "IMS QTI 1.2 & 2.1", detail: "Question & Test Interoperability specifications by IMS Global / 1EdTech."),
-        Credit(name: "Canvas LMS", detail: "QTI import/export targets the Canvas Classic and New Quizzes engines.")
+        Credit(name: "Learning management systems", detail: "QTI 1.2/2.1 and IMS Common Cartridge interchange with Canvas, Brightspace, Blackboard, Moodle, and other LMSs.")
     ]
 
     var body: some View {
@@ -175,6 +175,9 @@ struct ContentView: View {
     @State private var isLintSheetPresented = false
     @State private var importPickerContext: ImportPickerContext?
     @State private var pendingImport: PendingImport?
+    @State private var qtiValidation: QTIValidationContext?
+    @State private var pendingExportEngine: CanvasQuizEngine?
+    @State private var isIMSCCImporterPresented = false
 
     private var lintFindings: [UUID: [LintFinding]] { QuestionLinter().findings(for: quiz) }
 
@@ -195,7 +198,8 @@ struct ContentView: View {
                 onMove: moveQuestions(from:to:),
                 onNudge: nudgeQuestion(id:by:),
                 onOpenBank: { isBankPresented = true },
-                onMergeFromFile: { isMergeImporterPresented = true }
+                onMergeFromFile: { isMergeImporterPresented = true },
+                onImportCommonCartridge: { isIMSCCImporterPresented = true }
             )
             .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 320)
         } detail: {
@@ -249,28 +253,34 @@ struct ContentView: View {
                 .help("Import questions from marked plain text (⇧⌘I)")
 
                 Menu {
-                    Button("Keep Formatting…") {
-                        importPreservesFormatting = true
-                        isQTIImporterPresented = true
+                    Section("QTI Package (.zip)") {
+                        Button("Keep Formatting…") {
+                            importPreservesFormatting = true
+                            isQTIImporterPresented = true
+                        }
+                        Button("Plain Text…") {
+                            importPreservesFormatting = false
+                            isQTIImporterPresented = true
+                        }
                     }
-                    Button("Plain Text…") {
-                        importPreservesFormatting = false
-                        isQTIImporterPresented = true
+                    Divider()
+                    Button("Common Cartridge (.imscc)…") {
+                        isIMSCCImporterPresented = true
                     }
                 } label: {
-                    Label("Import QTI Zip", systemImage: "doc.zipper")
+                    Label("Import Package", systemImage: "doc.zipper")
                 } primaryAction: {
                     importPreservesFormatting = true
                     isQTIImporterPresented = true
                 }
-                .help("Import a Canvas QTI .zip package — keep formatting or import as plain text")
+                .help("Import a QTI .zip or an IMS Common Cartridge (.imscc) — works with packages from Canvas and other LMSs")
             }
 
             ToolbarSpacer(.fixed)
 
             ToolbarItemGroup {
                 Menu {
-                    Section("Canvas QTI Package") {
+                    Section("QTI Package") {
                         ForEach(CanvasQuizEngine.allCases) { engine in
                             Button(engine.displayName) {
                                 prepareExport(engine: engine)
@@ -288,7 +298,7 @@ struct ContentView: View {
                     Label("Export", systemImage: "square.and.arrow.up")
                 }
                 .menuIndicator(.hidden)
-                .help("Export as a Canvas QTI package, a formatted document, or a printable paper exam")
+                .help("Export as a QTI package (for Canvas and other LMSs), a formatted document, or a printable paper exam")
 
                 Button {
                     isPreviewPresented = true
@@ -414,6 +424,25 @@ struct ContentView: View {
             allowsMultipleSelection: true
         ) { result in
             mergeFromFiles(result)
+        }
+        .fileImporter(
+            isPresented: $isIMSCCImporterPresented,
+            allowedContentTypes: imsccContentTypes,
+            allowsMultipleSelection: false
+        ) { result in
+            importCommonCartridge(result)
+        }
+        .sheet(item: $qtiValidation, onDismiss: {
+            // Run the export only after the validation sheet has fully dismissed,
+            // so the file exporter doesn't fight a still-closing sheet.
+            if let engine = pendingExportEngine {
+                pendingExportEngine = nil
+                finishExport(engine: engine)
+            }
+        }) { context in
+            QTIValidationSheet(engineName: context.engine.displayName, issues: context.issues) {
+                pendingExportEngine = context.engine
+            }
         }
         .focusedValue(\.quizCommandActions, makeCommandActions())
         .alert(
@@ -733,6 +762,67 @@ struct ContentView: View {
         }
     }
 
+    // MARK: - Common Cartridge (.imscc) import
+
+    private var imsccContentTypes: [UTType] {
+        if let imscc = UTType(filenameExtension: "imscc") {
+            return [imscc, .zip]
+        }
+        return [.zip]
+    }
+
+    private func importCommonCartridge(_ result: Result<[URL], Error>) {
+        do {
+            let urls = try result.get()
+            guard let url = urls.first else { return }
+            let didAccess = url.startAccessingSecurityScopedResource()
+            defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
+
+            let sections = try QTIImporter(preserveFormatting: importPreservesFormatting).importSections(fromZipAt: url)
+            let candidates = importCandidates(sections: sections)
+            guard !candidates.isEmpty else {
+                errorMessage = "No quiz questions were found in \(url.lastPathComponent)."
+                return
+            }
+
+            let quizzes = sections.filter { $0.kind == .assessment }.count
+            let banks = sections.filter { $0.kind == .questionBank }.count
+            importPickerContext = ImportPickerContext(
+                title: "Import from Common Cartridge",
+                sourceDescription: "From \(url.lastPathComponent) — \(sectionSummary(quizzes: quizzes, banks: banks)). Choose which questions to import.",
+                candidates: candidates,
+                confirmVerb: "Import",
+                importedTitle: nil,
+                actionName: "Import Common Cartridge",
+                onConfirm: { selected, title, action in commitImport(selected, importedTitle: title, actionName: action) }
+            )
+        } catch {
+            errorMessage = "Common Cartridge import failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func importCandidates(sections: [QTISection]) -> [ImportCandidate] {
+        let merger = QuizMerger()
+        let existingKeys = Set(quiz.questions.map(merger.duplicateKey(for:)))
+        return sections.flatMap { section in
+            let prefix = section.kind == .questionBank ? "Bank" : "Quiz"
+            return section.questions.map { question in
+                ImportCandidate(
+                    question: question,
+                    isDuplicate: existingKeys.contains(merger.duplicateKey(for: question)),
+                    sourceLabel: "\(prefix): \(section.title)"
+                )
+            }
+        }
+    }
+
+    private func sectionSummary(quizzes: Int, banks: Int) -> String {
+        var parts: [String] = []
+        if quizzes > 0 { parts.append("\(quizzes) quiz\(quizzes == 1 ? "" : "zes")") }
+        if banks > 0 { parts.append("\(banks) item bank\(banks == 1 ? "" : "s")") }
+        return parts.isEmpty ? "no sections" : parts.joined(separator: ", ")
+    }
+
     private func commitImport(_ questions: [QuizQuestion], importedTitle: String?, actionName: String) {
         guard !questions.isEmpty else { return }
         let merger = QuizMerger()
@@ -785,6 +875,18 @@ struct ContentView: View {
             return
         }
 
+        // Validate the package (well-formed XML, manifest consistency, and a
+        // re-import round-trip). Clean packages export straight away; otherwise the
+        // findings are shown first so the user can fix them or proceed anyway.
+        let validationIssues = QTIValidator().validateExport(of: quiz, engine: engine)
+        if validationIssues.isEmpty {
+            finishExport(engine: engine)
+        } else {
+            qtiValidation = QTIValidationContext(engine: engine, issues: validationIssues)
+        }
+    }
+
+    private func finishExport(engine: CanvasQuizEngine) {
         do {
             exportDocument = try QTIArchiveDocument(quiz: quiz, engine: engine)
             isExporterPresented = true
@@ -819,6 +921,7 @@ struct SidebarView: View {
     let onNudge: (UUID, Int) -> Void
     let onOpenBank: () -> Void
     let onMergeFromFile: () -> Void
+    let onImportCommonCartridge: () -> Void
 
     @State private var searchText = ""
     @State private var difficultyFilter: QuizDifficulty?
@@ -981,6 +1084,7 @@ struct SidebarView: View {
                 Button("Marked Text…", action: onImportMarkedText)
                 Button("QTI Zip — Keep Formatting…") { onImportQTI(true) }
                 Button("QTI Zip — Plain Text…") { onImportQTI(false) }
+                Button("Common Cartridge (.imscc)…", action: onImportCommonCartridge)
                 Divider()
                 Button("Merge from File…", action: onMergeFromFile)
                 Button("Question Bank…", action: onOpenBank)
@@ -1663,7 +1767,7 @@ struct AIPanel: View {
     @AppStorage("aiEndpoint") private var endpoint = "https://api.openai.com/v1/chat/completions"
     @AppStorage("aiModel") private var model = "gpt-4o-mini"
     @State private var feature = AIFeature.review
-    @State private var instruction = "Check the quiz for clarity, answer-key issues, accessibility, feedback quality, and Canvas import readiness."
+    @State private var instruction = "Check the quiz for clarity, answer-key issues, accessibility, feedback quality, and LMS import readiness."
     @State private var isRunning = false
     @State private var isConfigPresented = false
     @State private var aiResult: AIResultContext?

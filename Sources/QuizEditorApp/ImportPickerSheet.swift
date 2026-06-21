@@ -7,6 +7,9 @@ struct ImportCandidate: Identifiable {
     let id = UUID()
     let question: QuizQuestion
     var isDuplicate: Bool = false
+    /// Where this question came from (e.g. "Quiz: Midterm" or "Bank: Cells"),
+    /// shown when importing from a multi-section source like a Common Cartridge.
+    var sourceLabel: String? = nil
 }
 
 /// A reusable picker shown before import or merge: choose exactly which parsed
@@ -144,6 +147,13 @@ private struct ImportCandidateRow: View {
                         Text(candidate.question.type.displayName)
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                        if let source = candidate.sourceLabel {
+                            Text("·").font(.caption).foregroundStyle(.secondary)
+                            Text(source)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
                         if candidate.isDuplicate {
                             Text("Already in quiz")
                                 .font(.caption2.weight(.semibold))
@@ -158,6 +168,6 @@ private struct ImportCandidateRow: View {
             }
         }
         .toggleStyle(.checkbox)
-        .accessibilityLabel("\(plainPrompt), \(candidate.question.type.displayName)\(candidate.isDuplicate ? ", already in quiz" : "")")
+        .accessibilityLabel("\(plainPrompt), \(candidate.question.type.displayName)\(candidate.sourceLabel.map { ", from \($0)" } ?? "")\(candidate.isDuplicate ? ", already in quiz" : "")")
     }
 }
