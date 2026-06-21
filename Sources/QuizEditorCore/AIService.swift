@@ -68,9 +68,9 @@ public enum AIFeature: String, CaseIterable, Identifiable, Sendable {
     var systemInstruction: String {
         switch self {
         case .review:
-            "You are performing an AI review of a quiz for accuracy, clarity, Canvas readiness, and WCAG accessibility. Return concise, prioritized recommendations."
+            "You are performing an AI review of a quiz for accuracy, clarity, QTI/LMS import readiness, and WCAG accessibility. Return concise, prioritized recommendations."
         case .author:
-            "You are authoring quiz questions. Return Canvas-friendly questions with answer choices, correct answers marked with *, and feedback."
+            "You are authoring quiz questions. Return well-structured questions with answer choices, correct answers marked with *, and feedback."
         case .revise:
             "You are revising quiz questions. Preserve intent while improving clarity, accessibility, distractor quality, and alignment."
         case .generateFeedback:
@@ -84,7 +84,7 @@ public struct AIPromptBuilder: Sendable {
 
     public func makePrompt(feature: AIFeature, quiz: Quiz, userInstruction: String) -> String {
         """
-        You are helping improve a Canvas quiz in Quiz Editor.
+        You are helping improve a quiz in Quiz Editor.
 
         Task: \(feature.displayName)
         System role: \(feature.systemInstruction)
@@ -94,7 +94,7 @@ public struct AIPromptBuilder: Sendable {
         - Keep wording accessible and concise.
         - Flag ambiguity, more than one correct answer, weak distractors, and missing feedback.
         - Maintain WCAG-friendly language and avoid relying on color, visual position, or images without alt text.
-        - Preserve Canvas QTI compatibility.
+        - Preserve QTI compatibility.
         - If revising or authoring, return marked text using `*` before correct answers.
         - Paste the full response back into Quiz Editor after the model answers.
 
