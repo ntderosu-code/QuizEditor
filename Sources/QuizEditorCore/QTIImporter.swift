@@ -1,5 +1,25 @@
 import Foundation
 
+/// A group of questions discovered inside a package — a quiz (assessment) or an
+/// item bank (objectbank). Used when importing IMS Common Cartridge files, which
+/// can bundle several of each.
+public struct QTISection: Equatable, Sendable {
+    public enum Kind: Sendable, Equatable {
+        case assessment
+        case questionBank
+    }
+
+    public let title: String
+    public let kind: Kind
+    public let questions: [QuizQuestion]
+
+    public init(title: String, kind: Kind, questions: [QuizQuestion]) {
+        self.title = title
+        self.kind = kind
+        self.questions = questions
+    }
+}
+
 public struct QTIImporter: Sendable {
     public enum ImportError: Error, Equatable, CustomStringConvertible {
         case missingUnzipExecutable
@@ -67,6 +87,65 @@ public struct QTIImporter: Sendable {
 
         guard !questions.isEmpty else { throw ImportError.noQuestionsFound }
         return Quiz(title: title.isEmpty ? "Imported Quiz" : title, questions: questions)
+    }
+
+    /// Imports every quiz and item bank from an IMS Common Cartridge (`.imscc`)
+    /// or QTI archive, grouped into sections so the caller can show which quiz or
+    /// bank each question came from.
+    public func importSections(fromZipAt archiveURL: URL) throws -> [QTISection] {
+        let workingDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: workingDirectory) }
+
+        try FileManager.default.createDirectory(at: workingDirectory, withIntermediateDirectories: true)
+        try unzip(archiveURL, into: workingDirectory)
+        return try importSections(fromDirectory: workingDirectory)
+    }
+
+    public func importSections(fromDirectory directoryURL: URL) throws -> [QTISection] {
+        let manifestURL = directoryURL.appendingPathComponent("imsmanifest.xml")
+        guard FileManager.default.fileExists(atPath: manifestURL.path) else { throw ImportError.manifestNotFound }
+        let manifest = try String(contentsOf: manifestURL, encoding: .utf8)
+
+        // Scan every XML file the manifest references; keep the ones that actually
+        // contain questions (assessments and objectbanks), skipping pages/settings.
+        let xmlHrefs = uniquePreservingOrder(hrefs(in: manifest).filter { $0.hasSuffix(".xml") })
+        var sections: [QTISection] = []
+        for href in xmlHrefs {
+            let fileURL = directoryURL.appendingPathComponent(href)
+            guard let xml = try? String(contentsOf: fileURL, encoding: .utf8) else { continue }
+            let questions = extractItems(from: xml).compactMap { parseItem($0) }
+            guard !questions.isEmpty else { continue }
+            let kind: QTISection.Kind = xml.contains("<objectbank") ? .questionBank : .assessment
+            sections.append(QTISection(title: sectionTitle(in: xml, fallback: href), kind: kind, questions: questions))
+        }
+
+        // Fall back to the single-assessment importer for plain QTI packages.
+        if sections.isEmpty {
+            let quiz = try importQuiz(fromDirectory: directoryURL)
+            sections.append(QTISection(title: quiz.title, kind: .assessment, questions: quiz.questions))
+        }
+
+        guard sections.contains(where: { !$0.questions.isEmpty }) else { throw ImportError.noQuestionsFound }
+        return sections
+    }
+
+    /// Returns the `<item>…</item>` blocks in a QTI 1.2 file (assessment or
+    /// objectbank); for a QTI 2.1 file the whole document is a single item.
+    private func extractItems(from xml: String) -> [String] {
+        if xml.range(of: "<item\\b", options: .regularExpression) != nil {
+            return inlineItems(in: xml)
+        }
+        if xml.contains("assessmentItem") {
+            return [xml]
+        }
+        return []
+    }
+
+    private func sectionTitle(in xml: String, fallback: String) -> String {
+        if let title = matches(pattern: #"<(?:assessment|objectbank)\b[^>]*\btitle="([^"]*)""#, in: xml).first, !title.isEmpty {
+            return xmlUnescape(title)
+        }
+        return (fallback as NSString).lastPathComponent
     }
 
     private func unzip(_ archiveURL: URL, into directoryURL: URL) throws {

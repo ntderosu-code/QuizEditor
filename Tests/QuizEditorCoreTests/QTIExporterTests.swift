@@ -2,6 +2,29 @@ import XCTest
 @testable import QuizEditorCore
 
 final class QTIExporterTests: XCTestCase {
+    func testClassicItemCarriesPointsTagsAndDifficultyMetadata() throws {
+        let quiz = Quiz(title: "Meta", questions: [
+            QuizQuestion(
+                type: .multipleChoice,
+                prompt: "Q?",
+                answers: [QuizAnswer(text: "A", isCorrect: true)],
+                points: 3,
+                tags: ["cells", "energy"],
+                difficulty: .hard
+            )
+        ])
+
+        let package = try CanvasQTIExporter(engine: .classicQuizzes).makePackage(for: quiz)
+        let item = try XCTUnwrap(package.file(named: "items/question-1.xml")).contents
+
+        XCTAssertTrue(item.contains("<fieldlabel>points_possible</fieldlabel>"))
+        XCTAssertTrue(item.contains("<fieldentry>3</fieldentry>"))
+        XCTAssertTrue(item.contains("<fieldlabel>difficulty</fieldlabel>"))
+        XCTAssertTrue(item.contains("<fieldentry>hard</fieldentry>"))
+        XCTAssertTrue(item.contains("<fieldlabel>tags</fieldlabel>"))
+        XCTAssertTrue(item.contains("cells, energy"))
+    }
+
     func testBuildsCanvasQTIPackageWithManifestAssessmentItemsAnswersAndFeedback() throws {
         let quiz = Quiz(
             title: "Safety <Basics>",

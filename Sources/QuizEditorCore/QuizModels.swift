@@ -23,13 +23,17 @@ public struct Quiz: Equatable, Codable, Identifiable, Sendable {
                     QuizAnswer(text: "Golgi apparatus", isCorrect: false),
                     QuizAnswer(text: "Lysosome", isCorrect: false)
                 ],
-                feedback: "The mitochondrion generates ATP through cellular respiration."
+                feedback: "The mitochondrion generates ATP through cellular respiration.",
+                tags: ["organelles", "energy"],
+                difficulty: .easy
             ),
             QuizQuestion(
                 type: .shortAnswer,
                 prompt: "What molecule stores a cell's genetic information?",
                 answers: [QuizAnswer(text: "DNA", isCorrect: true)],
-                feedback: "DNA holds the hereditary instructions a cell uses to function."
+                feedback: "DNA holds the hereditary instructions a cell uses to function.",
+                tags: ["genetics"],
+                difficulty: .medium
             )
         ]
     )
@@ -43,6 +47,10 @@ public struct QuizQuestion: Equatable, Codable, Identifiable, Sendable {
     public var matches: [MatchingPair]
     public var feedback: String
     public var points: Double
+    /// Free-form topic tags used to organize and filter questions.
+    public var tags: [String]
+    /// Optional difficulty rating; `nil` means unspecified.
+    public var difficulty: QuizDifficulty?
 
     public init(
         id: UUID = UUID(),
@@ -51,7 +59,9 @@ public struct QuizQuestion: Equatable, Codable, Identifiable, Sendable {
         answers: [QuizAnswer] = [],
         matches: [MatchingPair] = [],
         feedback: String = "",
-        points: Double = 1
+        points: Double = 1,
+        tags: [String] = [],
+        difficulty: QuizDifficulty? = nil
     ) {
         self.id = id
         self.type = type
@@ -60,6 +70,43 @@ public struct QuizQuestion: Equatable, Codable, Identifiable, Sendable {
         self.matches = matches
         self.feedback = feedback
         self.points = points
+        self.tags = tags
+        self.difficulty = difficulty
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, type, prompt, answers, matches, feedback, points, tags, difficulty
+    }
+
+    // Decodes tolerantly so quizzes saved before metadata existed still open:
+    // any field absent from the JSON falls back to its empty/default value.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        type = try container.decode(QuizQuestionType.self, forKey: .type)
+        prompt = try container.decode(String.self, forKey: .prompt)
+        answers = try container.decodeIfPresent([QuizAnswer].self, forKey: .answers) ?? []
+        matches = try container.decodeIfPresent([MatchingPair].self, forKey: .matches) ?? []
+        feedback = try container.decodeIfPresent(String.self, forKey: .feedback) ?? ""
+        points = try container.decodeIfPresent(Double.self, forKey: .points) ?? 1
+        tags = try container.decodeIfPresent([String].self, forKey: .tags) ?? []
+        difficulty = try container.decodeIfPresent(QuizDifficulty.self, forKey: .difficulty)
+    }
+}
+
+public enum QuizDifficulty: String, CaseIterable, Codable, Identifiable, Sendable {
+    case easy
+    case medium
+    case hard
+
+    public var id: String { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .easy: "Easy"
+        case .medium: "Medium"
+        case .hard: "Hard"
+        }
     }
 }
 
@@ -96,6 +143,30 @@ public enum QuizQuestionType: String, CaseIterable, Codable, Identifiable, Senda
         case .essay: "essay_question"
         case .matching: "matching_question"
         }
+    }
+}
+
+public extension Quiz {
+    /// Every distinct tag used across the quiz, de-duplicated case-insensitively
+    /// (preserving the first-seen spelling) and sorted for stable display.
+    var allTags: [String] {
+        var seenKeys: Set<String> = []
+        var orderedTags: [String] = []
+        for question in questions {
+            for tag in question.tags {
+                let key = tag.lowercased()
+                if !seenKeys.contains(key) {
+                    seenKeys.insert(key)
+                    orderedTags.append(tag)
+                }
+            }
+        }
+        return orderedTags.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+    }
+
+    /// The sum of every question's point value.
+    var totalPoints: Double {
+        questions.reduce(0) { $0 + $1.points }
     }
 }
 

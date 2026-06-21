@@ -39,16 +39,26 @@ struct QuizDocument: FileDocument {
 
 @main
 struct QuizEditorApp: App {
+    init() {
+        // Open straight into a blank untitled document instead of showing the
+        // open-file panel on launch.
+        UserDefaults.standard.register(
+            defaults: ["NSShowAppCentricOpenPanelInsteadOfUntitledFile": false]
+        )
+    }
+
     var body: some Scene {
         DocumentGroup(newDocument: QuizDocument()) { file in
             ContentView(quiz: file.$document.quiz)
-                .frame(minWidth: 980, minHeight: 680)
+                .frame(minWidth: 760, minHeight: 480)
         }
         .windowToolbarStyle(.unified)
+        .defaultSize(width: 1200, height: 760)
         .commands {
             CommandGroup(after: .help) {
                 AcknowledgementsMenuButton()
             }
+            QuestionCommands()
         }
 
         Window("Acknowledgements", id: "acknowledgements") {
@@ -80,7 +90,7 @@ struct AcknowledgementsView: View {
         Credit(name: "SwiftUI, AppKit & WebKit", detail: "Apple's UI frameworks, used under the Apple SDK License."),
         Credit(name: "SF Symbols", detail: "Icon set © Apple Inc., used under the SF Symbols license."),
         Credit(name: "IMS QTI 1.2 & 2.1", detail: "Question & Test Interoperability specifications by IMS Global / 1EdTech."),
-        Credit(name: "Canvas LMS", detail: "QTI import/export targets the Canvas Classic and New Quizzes engines.")
+        Credit(name: "Learning management systems", detail: "QTI 1.2/2.1 and IMS Common Cartridge interchange with Canvas, Brightspace, Blackboard, Moodle, and other LMSs.")
     ]
 
     var body: some View {
@@ -117,13 +127,40 @@ struct AcknowledgementsView: View {
     }
 }
 
+/// A reference target the window's UndoManager can register against. ContentView
+/// is a value type, so structural quiz edits route their undo through this class.
+@MainActor final class UndoCoordinator: ObservableObject {}
+
+/// Parsed questions waiting for the import picker, which is presented only after
+/// the marked-text import sheet has fully dismissed (two sheets can't overlap).
+struct PendingImport {
+    let questions: [QuizQuestion]
+    let importedTitle: String?
+    let source: String
+}
+
+/// Drives the shared import/merge picker sheet.
+struct ImportPickerContext: Identifiable {
+    let id = UUID()
+    let title: String
+    let sourceDescription: String
+    let candidates: [ImportCandidate]
+    let confirmVerb: String
+    let importedTitle: String?
+    let actionName: String
+    let onConfirm: ([QuizQuestion], String?, String) -> Void
+}
+
 struct ContentView: View {
     @Binding var quiz: Quiz
+    @Environment(\.undoManager) private var undoManager
+    @StateObject private var undoCoordinator = UndoCoordinator()
     @State private var selectedQuestionID: UUID?
     @State private var isImporterPresented = false
     @State private var isQTIImporterPresented = false
+    @State private var isMergeImporterPresented = false
     @State private var importText = sampleImportText
-    @State private var statusMessage = "Ready"
+    @State private var errorMessage: String?
     @State private var exportDocument = QTIArchiveDocument(data: Data())
     @State private var isExporterPresented = false
     @State private var correctMarkerSymbol = "*"
@@ -131,31 +168,70 @@ struct ContentView: View {
     @State private var isAIPanelVisible = true
     @State private var importPreservesFormatting = true
     @State private var isPreviewPresented = false
+    @State private var isQuickSwitchPresented = false
+    @State private var isPaperExamPresented = false
+    @State private var isBankPresented = false
+    @State private var isAuthoringPresented = false
+    @State private var isLintSheetPresented = false
+    @State private var importPickerContext: ImportPickerContext?
+    @State private var pendingImport: PendingImport?
+    @State private var qtiValidation: QTIValidationContext?
+    @State private var pendingExportEngine: CanvasQuizEngine?
+    @State private var isIMSCCImporterPresented = false
+
+    private var lintFindings: [UUID: [LintFinding]] { QuestionLinter().findings(for: quiz) }
 
     var body: some View {
-        HSplitView {
+        NavigationSplitView {
             SidebarView(
                 quiz: $quiz,
                 selectedQuestionID: $selectedQuestionID,
+                lintFindings: lintFindings,
                 onAddQuestion: addQuestion,
                 onImportMarkedText: { isImporterPresented = true },
                 onImportQTI: { keepFormatting in
                     importPreservesFormatting = keepFormatting
                     isQTIImporterPresented = true
-                }
+                },
+                onDuplicate: duplicateQuestion(id:),
+                onDelete: deleteQuestion(id:),
+                onMove: moveQuestions(from:to:),
+                onNudge: nudgeQuestion(id:by:),
+                onOpenBank: { isBankPresented = true },
+                onMergeFromFile: { isMergeImporterPresented = true },
+                onImportCommonCartridge: { isIMSCCImporterPresented = true }
             )
-            .frame(minWidth: 300, idealWidth: 320, maxWidth: 360)
+            .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 320)
+        } detail: {
+            ZStack {
+                // Neutral canvas behind the floating editor card. It still bleeds
+                // under the Liquid Glass sidebar and inspector via
+                // backgroundExtensionEffect (WWDC25 session 356), but carries no
+                // accent tint so the central editing area stays neutral.
+                Color(nsColor: .windowBackgroundColor)
+                    .backgroundExtensionEffect()
 
-            editorDetail
-                .frame(minWidth: 520)
-
-            if isAIPanelVisible {
-                AIPanel(quiz: quiz)
-                    .frame(minWidth: 380, idealWidth: 420, maxWidth: 540)
+                // The editor floats as a card on top of the canvas.
+                editorDetail
+                    .background(Color(nsColor: .textBackgroundColor))
+                    .clipShape(.rect(cornerRadius: 16))
+                    .shadow(color: .black.opacity(0.12), radius: 10, y: 2)
+                    .padding(16)
             }
+            // Fill the detail column so the window can grow freely. Without
+            // maxWidth/maxHeight the content reports a fixed ideal size and the
+            // window gets a hard maximum size.
+            .frame(minWidth: 320, maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .inspector(isPresented: $isAIPanelVisible) {
+            AIPanel(quiz: quiz)
+                .inspectorColumnWidth(min: 280, ideal: 320, max: 440)
         }
         .toolbar {
-            ToolbarItemGroup {
+            // Grouped by function so each cluster renders as its own Liquid
+            // Glass capsule, separated by ToolbarSpacer (not crammed into one
+            // shared glass background).
+            ToolbarItem {
                 Button {
                     addQuestion()
                 } label: {
@@ -163,36 +239,48 @@ struct ContentView: View {
                 }
                 .keyboardShortcut("n", modifiers: [.command, .shift])
                 .help("Add a new question (⇧⌘N)")
+            }
 
-                Divider()
+            ToolbarSpacer(.fixed)
 
+            ToolbarItemGroup {
                 Button {
                     isImporterPresented = true
                 } label: {
-                    Label("Import Marked Text", systemImage: "text.badge.plus")
+                    Label("Import Marked Text", systemImage: "square.and.arrow.down")
                 }
                 .keyboardShortcut("i", modifiers: [.command, .shift])
                 .help("Import questions from marked plain text (⇧⌘I)")
 
                 Menu {
-                    Button("Keep Formatting…") {
-                        importPreservesFormatting = true
-                        isQTIImporterPresented = true
+                    Section("QTI Package (.zip)") {
+                        Button("Keep Formatting…") {
+                            importPreservesFormatting = true
+                            isQTIImporterPresented = true
+                        }
+                        Button("Plain Text…") {
+                            importPreservesFormatting = false
+                            isQTIImporterPresented = true
+                        }
                     }
-                    Button("Plain Text…") {
-                        importPreservesFormatting = false
-                        isQTIImporterPresented = true
+                    Divider()
+                    Button("Common Cartridge (.imscc)…") {
+                        isIMSCCImporterPresented = true
                     }
                 } label: {
-                    Label("Import QTI Zip", systemImage: "archivebox")
+                    Label("Import Package", systemImage: "doc.zipper")
                 } primaryAction: {
                     importPreservesFormatting = true
                     isQTIImporterPresented = true
                 }
-                .help("Import a Canvas QTI .zip package — keep formatting or import as plain text")
+                .help("Import a QTI .zip or an IMS Common Cartridge (.imscc) — works with packages from Canvas and other LMSs")
+            }
 
+            ToolbarSpacer(.fixed)
+
+            ToolbarItemGroup {
                 Menu {
-                    Section("Canvas QTI Package") {
+                    Section("QTI Package") {
                         ForEach(CanvasQuizEngine.allCases) { engine in
                             Button(engine.displayName) {
                                 prepareExport(engine: engine)
@@ -203,11 +291,14 @@ struct ContentView: View {
                     Button("Formatted Document (HTML)…") {
                         exportFormattedDocument()
                     }
+                    Button("Paper Exam…") {
+                        isPaperExamPresented = true
+                    }
                 } label: {
                     Label("Export", systemImage: "square.and.arrow.up")
                 }
                 .menuIndicator(.hidden)
-                .help("Export as a Canvas QTI package or a formatted document")
+                .help("Export as a QTI package (for Canvas and other LMSs), a formatted document, or a printable paper exam")
 
                 Button {
                     isPreviewPresented = true
@@ -216,9 +307,36 @@ struct ContentView: View {
                 }
                 .keyboardShortcut("p", modifiers: [.command, .shift])
                 .help("Preview a formatted version of the quiz (⇧⌘P)")
+            }
 
-                Divider()
+            ToolbarSpacer(.fixed)
 
+            ToolbarItemGroup {
+                Button {
+                    isBankPresented = true
+                } label: {
+                    Label("Question Bank", systemImage: "books.vertical")
+                }
+                .help("Browse and add questions from a folder of saved quizzes")
+
+                Button {
+                    isAuthoringPresented = true
+                } label: {
+                    Label("Author with AI", systemImage: "sparkles")
+                }
+                .help("Generate new questions from a topic or learning objective")
+
+                Button {
+                    isLintSheetPresented = true
+                } label: {
+                    Label("Quality Check", systemImage: "checklist")
+                }
+                .help("Run the offline item-writing linter across the whole quiz")
+            }
+
+            ToolbarSpacer(.fixed)
+
+            ToolbarItem {
                 Menu {
                     Button("Check Spelling", action: checkSpelling)
                     Button("Show Spelling and Grammar", action: showSpellingPanel)
@@ -240,15 +358,12 @@ struct ContentView: View {
                 .help(isAIPanelVisible ? "Hide the AI Assistant panel (⌥⌘A)" : "Show the AI Assistant panel (⌥⌘A)")
             }
         }
-        .safeAreaInset(edge: .bottom) {
-            StatusBar(message: statusMessage)
-        }
         .onAppear {
             if selectedQuestionID == nil {
                 selectedQuestionID = quiz.questions.first?.id
             }
         }
-        .sheet(isPresented: $isImporterPresented) {
+        .sheet(isPresented: $isImporterPresented, onDismiss: presentPendingImportPicker) {
             ImportSheet(
                 importText: $importText,
                 correctMarkerSymbol: $correctMarkerSymbol,
@@ -271,12 +386,73 @@ struct ContentView: View {
             defaultFilename: defaultExportFilename
         ) { result in
             switch result {
-            case .success(let url): statusMessage = "Exported QTI package to \(url.lastPathComponent)."
-            case .failure(let error): statusMessage = "Export failed: \(error.localizedDescription)"
+            case .success: break
+            case .failure(let error): errorMessage = "Export failed: \(error.localizedDescription)"
             }
         }
         .sheet(isPresented: $isPreviewPresented) {
             QuizPreviewSheet(quiz: quiz, selectedQuestion: selectedQuestionForPreview)
+        }
+        .sheet(isPresented: $isQuickSwitchPresented) {
+            QuickSwitchSheet(quiz: quiz) { id in selectedQuestionID = id }
+        }
+        .sheet(isPresented: $isPaperExamPresented) {
+            PaperExamOptionsSheet { options in exportPaperExam(options) }
+        }
+        .sheet(isPresented: $isBankPresented) {
+            QuestionBankSheet { questions in addQuestions(questions, actionName: "Add from Bank") }
+        }
+        .sheet(isPresented: $isAuthoringPresented) {
+            AIAuthoringSheet(quizTitle: quiz.title) { questions in addQuestions(questions, actionName: "Add AI Questions") }
+        }
+        .sheet(isPresented: $isLintSheetPresented) {
+            QuizLintSheet(quiz: quiz) { id in selectedQuestionID = id }
+        }
+        .sheet(item: $importPickerContext) { context in
+            ImportPickerSheet(
+                title: context.title,
+                sourceDescription: context.sourceDescription,
+                candidates: context.candidates,
+                confirmVerb: context.confirmVerb
+            ) { selected in
+                context.onConfirm(selected, context.importedTitle, context.actionName)
+            }
+        }
+        .fileImporter(
+            isPresented: $isMergeImporterPresented,
+            allowedContentTypes: [.quizEditorDocument, .zip],
+            allowsMultipleSelection: true
+        ) { result in
+            mergeFromFiles(result)
+        }
+        .fileImporter(
+            isPresented: $isIMSCCImporterPresented,
+            allowedContentTypes: imsccContentTypes,
+            allowsMultipleSelection: false
+        ) { result in
+            importCommonCartridge(result)
+        }
+        .sheet(item: $qtiValidation, onDismiss: {
+            // Run the export only after the validation sheet has fully dismissed,
+            // so the file exporter doesn't fight a still-closing sheet.
+            if let engine = pendingExportEngine {
+                pendingExportEngine = nil
+                finishExport(engine: engine)
+            }
+        }) { context in
+            QTIValidationSheet(engineName: context.engine.displayName, issues: context.issues) {
+                pendingExportEngine = context.engine
+            }
+        }
+        .focusedValue(\.quizCommandActions, makeCommandActions())
+        .alert(
+            "Something Went Wrong",
+            isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } }),
+            presenting: errorMessage
+        ) { _ in
+            Button("OK", role: .cancel) { }
+        } message: { message in
+            Text(message)
         }
     }
 
@@ -294,15 +470,52 @@ struct ContentView: View {
                 questionNumber: selectedIndex + 1,
                 questionTotal: quiz.questions.count
             ) {
-                deleteQuestion(at: selectedIndex)
+                deleteQuestion(id: quiz.questions[selectedIndex].id)
             }
             .id(quiz.questions[selectedIndex].id)
         } else {
-            ContentUnavailableView(
-                "No Question Selected",
-                systemImage: "questionmark.square.dashed",
-                description: Text("Choose a question or add a new one to start writing.")
-            )
+            ContentUnavailableView {
+                Label("No Question Selected", systemImage: "questionmark.square.dashed")
+            } description: {
+                Text("Choose a question or add a new one to start writing.")
+            } actions: {
+                // Stack the actions so they never overflow the (sometimes narrow)
+                // editor card. Each stretches to a shared width for a tidy column.
+                VStack(spacing: 8) {
+                    Button {
+                        addQuestion()
+                    } label: {
+                        Label("Add Question", systemImage: "plus")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+
+                    Button {
+                        isImporterPresented = true
+                    } label: {
+                        Label("Import Marked Text", systemImage: "square.and.arrow.down")
+                            .frame(maxWidth: .infinity)
+                    }
+
+                    Menu {
+                        Button("Keep Formatting…") {
+                            importPreservesFormatting = true
+                            isQTIImporterPresented = true
+                        }
+                        Button("Plain Text…") {
+                            importPreservesFormatting = false
+                            isQTIImporterPresented = true
+                        }
+                    } label: {
+                        Label("Import QTI Zip", systemImage: "doc.zipper")
+                            .frame(maxWidth: .infinity)
+                    } primaryAction: {
+                        importPreservesFormatting = true
+                        isQTIImporterPresented = true
+                    }
+                }
+                .frame(width: 240)
+            }
         }
     }
 
@@ -311,6 +524,31 @@ struct ContentView: View {
             .replacingOccurrences(of: " ", with: "-")
             .filter { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }
         return (safeTitle.isEmpty ? "canvas-quiz" : safeTitle) + ".zip"
+    }
+
+    // MARK: - Question mutations (undoable)
+
+    /// Applies a structural change to the quiz and registers it with the window's
+    /// UndoManager so Edit ▸ Undo restores the prior state (e.g. before a merge).
+    private func mutateQuiz(to newQuiz: Quiz, actionName: String) {
+        let previous = quiz
+        quiz = newQuiz
+        registerUndo(restoring: previous, then: newQuiz, actionName: actionName)
+    }
+
+    private func registerUndo(restoring restoreState: Quiz, then redoState: Quiz, actionName: String) {
+        guard let undoManager else { return }
+        undoManager.registerUndo(withTarget: undoCoordinator) { _ in
+            quiz = restoreState
+            fixSelection(in: restoreState)
+            registerUndo(restoring: redoState, then: restoreState, actionName: actionName)
+        }
+        undoManager.setActionName(actionName)
+    }
+
+    private func fixSelection(in quizState: Quiz) {
+        if let selected = selectedQuestionID, quizState.questions.contains(where: { $0.id == selected }) { return }
+        selectedQuestionID = quizState.questions.first?.id
     }
 
     private func addQuestion() {
@@ -322,15 +560,120 @@ struct ContentView: View {
                 QuizAnswer(text: "Distractor", isCorrect: false)
             ]
         )
-        quiz.questions.append(question)
+        var updated = quiz
+        updated.questions.append(question)
+        mutateQuiz(to: updated, actionName: "Add Question")
         selectedQuestionID = question.id
-        statusMessage = "Added question."
     }
 
-    private func deleteQuestion(at index: Int) {
-        quiz.questions.remove(at: index)
-        selectedQuestionID = quiz.questions.first?.id
-        statusMessage = "Deleted question."
+    /// Appends questions (with fresh IDs) from the bank or AI authoring.
+    private func addQuestions(_ questions: [QuizQuestion], actionName: String) {
+        guard !questions.isEmpty else { return }
+        let merger = QuizMerger()
+        let fresh = questions.map { merger.withFreshIDs($0) }
+        var updated = quiz
+        updated.questions.append(contentsOf: fresh)
+        mutateQuiz(to: updated, actionName: actionName)
+        if let first = fresh.first?.id { selectedQuestionID = first }
+    }
+
+    private func duplicateQuestion(id: UUID) {
+        guard let index = quiz.questions.firstIndex(where: { $0.id == id }) else { return }
+        let copy = QuizMerger().withFreshIDs(quiz.questions[index])
+        var updated = quiz
+        updated.questions.insert(copy, at: index + 1)
+        mutateQuiz(to: updated, actionName: "Duplicate Question")
+        selectedQuestionID = copy.id
+    }
+
+    private func deleteQuestion(id: UUID) {
+        guard let index = quiz.questions.firstIndex(where: { $0.id == id }) else { return }
+        var updated = quiz
+        updated.questions.remove(at: index)
+        mutateQuiz(to: updated, actionName: "Delete Question")
+        if selectedQuestionID == id {
+            let nextIndex = min(index, updated.questions.count - 1)
+            selectedQuestionID = updated.questions.indices.contains(nextIndex) ? updated.questions[nextIndex].id : nil
+        }
+    }
+
+    private func moveQuestions(from offsets: IndexSet, to destination: Int) {
+        var updated = quiz
+        updated.questions.move(fromOffsets: offsets, toOffset: destination)
+        mutateQuiz(to: updated, actionName: "Reorder Questions")
+    }
+
+    private func nudgeQuestion(id: UUID, by delta: Int) {
+        guard let index = quiz.questions.firstIndex(where: { $0.id == id }) else { return }
+        let target = index + delta
+        guard quiz.questions.indices.contains(target) else { return }
+        var updated = quiz
+        updated.questions.swapAt(index, target)
+        mutateQuiz(to: updated, actionName: "Move Question")
+        selectedQuestionID = id
+    }
+
+    // MARK: - Selection / navigation
+
+    private func selectAdjacent(_ delta: Int) {
+        guard let current = selectedQuestionID,
+              let index = quiz.questions.firstIndex(where: { $0.id == current }) else {
+            selectedQuestionID = quiz.questions.first?.id
+            return
+        }
+        let target = index + delta
+        guard quiz.questions.indices.contains(target) else { return }
+        selectedQuestionID = quiz.questions[target].id
+    }
+
+    private func selectEdge(first: Bool) {
+        selectedQuestionID = first ? quiz.questions.first?.id : quiz.questions.last?.id
+    }
+
+    private func makeCommandActions() -> QuizCommandActions {
+        let index = selectedQuestionID.flatMap { id in quiz.questions.firstIndex(where: { $0.id == id }) }
+        let lastIndex = quiz.questions.count - 1
+        return QuizCommandActions(
+            hasSelection: selectedQuestionID != nil,
+            canSelectPrevious: (index ?? 0) > 0,
+            canSelectNext: index.map { $0 < lastIndex } ?? false,
+            canMoveUp: (index ?? 0) > 0,
+            canMoveDown: index.map { $0 < lastIndex } ?? false,
+            addQuestion: addQuestion,
+            selectPrevious: { selectAdjacent(-1) },
+            selectNext: { selectAdjacent(1) },
+            selectFirst: { selectEdge(first: true) },
+            selectLast: { selectEdge(first: false) },
+            moveUp: { if let id = selectedQuestionID { nudgeQuestion(id: id, by: -1) } },
+            moveDown: { if let id = selectedQuestionID { nudgeQuestion(id: id, by: 1) } },
+            duplicate: { if let id = selectedQuestionID { duplicateQuestion(id: id) } },
+            delete: { if let id = selectedQuestionID { deleteQuestion(id: id) } },
+            showQuickSwitch: { isQuickSwitchPresented = true }
+        )
+    }
+
+    // MARK: - Import / merge (via the question picker)
+
+    private func importMarkedText(_ text: String) {
+        do {
+            let marker = CorrectAnswerMarker(symbol: correctMarkerSymbol, location: correctMarkerLocation)
+            let parsed = try MarkedTextParser(correctAnswerMarker: marker).parse(text)
+            // Defer the picker until the import sheet has fully dismissed.
+            pendingImport = PendingImport(questions: parsed.questions, importedTitle: parsed.title, source: "marked text")
+            isImporterPresented = false
+        } catch {
+            // Close the sheet so the error alert (declared under it) can present;
+            // pendingImport stays nil so onDismiss won't open the picker.
+            pendingImport = nil
+            isImporterPresented = false
+            errorMessage = "Import failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func presentPendingImportPicker() {
+        guard let pending = pendingImport else { return }
+        pendingImport = nil
+        presentImportPicker(questions: pending.questions, importedTitle: pending.importedTitle, source: pending.source)
     }
 
     private func importQTIArchive(_ result: Result<[URL], Error>) {
@@ -338,29 +681,177 @@ struct ContentView: View {
             let urls = try result.get()
             guard let url = urls.first else { return }
             let didAccess = url.startAccessingSecurityScopedResource()
-            defer {
-                if didAccess {
-                    url.stopAccessingSecurityScopedResource()
-                }
-            }
-            quiz = try QTIImporter(preserveFormatting: importPreservesFormatting).importQuiz(fromZipAt: url)
-            selectedQuestionID = quiz.questions.first?.id
-            let formatNote = importPreservesFormatting ? "" : " (plain text)"
-            statusMessage = "Imported \(questionCount(quiz.questions.count)) from \(url.lastPathComponent)\(formatNote)."
+            defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
+            let imported = try QTIImporter(preserveFormatting: importPreservesFormatting).importQuiz(fromZipAt: url)
+            presentImportPicker(questions: imported.questions, importedTitle: imported.title, source: url.lastPathComponent)
         } catch {
-            statusMessage = "QTI import failed: \(error)"
+            errorMessage = "QTI import failed: \(error.localizedDescription)"
         }
     }
 
-    private func importMarkedText(_ text: String) {
+    private func presentImportPicker(questions: [QuizQuestion], importedTitle: String?, source: String) {
+        guard !questions.isEmpty else {
+            errorMessage = "No questions were found in the \(source)."
+            return
+        }
+        importPickerContext = ImportPickerContext(
+            title: "Import Questions",
+            sourceDescription: "From \(source) — choose which questions to import.",
+            candidates: importCandidates(for: questions),
+            confirmVerb: "Import",
+            importedTitle: importedTitle,
+            actionName: "Import Questions",
+            onConfirm: { selected, title, action in commitImport(selected, importedTitle: title, actionName: action) }
+        )
+    }
+
+    private func mergeFromFiles(_ result: Result<[URL], Error>) {
         do {
-            let marker = CorrectAnswerMarker(symbol: correctMarkerSymbol, location: correctMarkerLocation)
-            quiz = try MarkedTextParser(correctAnswerMarker: marker).parse(text)
-            selectedQuestionID = quiz.questions.first?.id
-            isImporterPresented = false
-            statusMessage = "Imported \(questionCount(quiz.questions.count)) from marked text."
+            let urls = try result.get()
+            guard !urls.isEmpty else { return }
+
+            var collected: [QuizQuestion] = []
+            var failed: [String] = []
+            for url in urls {
+                let didAccess = url.startAccessingSecurityScopedResource()
+                defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
+                if let questions = try? loadQuestions(from: url) {
+                    collected.append(contentsOf: questions)
+                } else {
+                    failed.append(url.lastPathComponent)
+                }
+            }
+
+            guard !collected.isEmpty else {
+                errorMessage = "No questions could be read from the selected file\(urls.count == 1 ? "" : "s")."
+                return
+            }
+
+            let names = urls.map(\.lastPathComponent).joined(separator: ", ")
+            var description = "From \(names) — duplicates are unchecked. Checking a duplicate keeps both copies."
+            if !failed.isEmpty { description += " Couldn't read: \(failed.joined(separator: ", "))." }
+
+            importPickerContext = ImportPickerContext(
+                title: "Merge Questions",
+                sourceDescription: description,
+                candidates: importCandidates(for: collected),
+                confirmVerb: "Merge",
+                importedTitle: nil,
+                actionName: "Merge Questions",
+                onConfirm: { selected, title, action in commitImport(selected, importedTitle: title, actionName: action) }
+            )
         } catch {
-            statusMessage = "Import failed: \(error)"
+            errorMessage = "Merge failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func loadQuestions(from url: URL) throws -> [QuizQuestion] {
+        if url.pathExtension.lowercased() == "zip" {
+            return try QTIImporter().importQuiz(fromZipAt: url).questions
+        }
+        let data = try Data(contentsOf: url)
+        return try JSONDecoder().decode(Quiz.self, from: data).questions
+    }
+
+    /// Flags incoming questions that duplicate one already in the quiz (prompt + type).
+    private func importCandidates(for questions: [QuizQuestion]) -> [ImportCandidate] {
+        let merger = QuizMerger()
+        let existingKeys = Set(quiz.questions.map(merger.duplicateKey(for:)))
+        return questions.map {
+            ImportCandidate(question: $0, isDuplicate: existingKeys.contains(merger.duplicateKey(for: $0)))
+        }
+    }
+
+    // MARK: - Common Cartridge (.imscc) import
+
+    private var imsccContentTypes: [UTType] {
+        if let imscc = UTType(filenameExtension: "imscc") {
+            return [imscc, .zip]
+        }
+        return [.zip]
+    }
+
+    private func importCommonCartridge(_ result: Result<[URL], Error>) {
+        do {
+            let urls = try result.get()
+            guard let url = urls.first else { return }
+            let didAccess = url.startAccessingSecurityScopedResource()
+            defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
+
+            let sections = try QTIImporter(preserveFormatting: importPreservesFormatting).importSections(fromZipAt: url)
+            let candidates = importCandidates(sections: sections)
+            guard !candidates.isEmpty else {
+                errorMessage = "No quiz questions were found in \(url.lastPathComponent)."
+                return
+            }
+
+            let quizzes = sections.filter { $0.kind == .assessment }.count
+            let banks = sections.filter { $0.kind == .questionBank }.count
+            importPickerContext = ImportPickerContext(
+                title: "Import from Common Cartridge",
+                sourceDescription: "From \(url.lastPathComponent) — \(sectionSummary(quizzes: quizzes, banks: banks)). Choose which questions to import.",
+                candidates: candidates,
+                confirmVerb: "Import",
+                importedTitle: nil,
+                actionName: "Import Common Cartridge",
+                onConfirm: { selected, title, action in commitImport(selected, importedTitle: title, actionName: action) }
+            )
+        } catch {
+            errorMessage = "Common Cartridge import failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func importCandidates(sections: [QTISection]) -> [ImportCandidate] {
+        let merger = QuizMerger()
+        let existingKeys = Set(quiz.questions.map(merger.duplicateKey(for:)))
+        return sections.flatMap { section in
+            let prefix = section.kind == .questionBank ? "Bank" : "Quiz"
+            return section.questions.map { question in
+                ImportCandidate(
+                    question: question,
+                    isDuplicate: existingKeys.contains(merger.duplicateKey(for: question)),
+                    sourceLabel: "\(prefix): \(section.title)"
+                )
+            }
+        }
+    }
+
+    private func sectionSummary(quizzes: Int, banks: Int) -> String {
+        var parts: [String] = []
+        if quizzes > 0 { parts.append("\(quizzes) quiz\(quizzes == 1 ? "" : "zes")") }
+        if banks > 0 { parts.append("\(banks) item bank\(banks == 1 ? "" : "s")") }
+        return parts.isEmpty ? "no sections" : parts.joined(separator: ", ")
+    }
+
+    private func commitImport(_ questions: [QuizQuestion], importedTitle: String?, actionName: String) {
+        guard !questions.isEmpty else { return }
+        let merger = QuizMerger()
+        let fresh = questions.map { merger.withFreshIDs($0) }
+        var updated = quiz
+        if updated.questions.isEmpty, isDefaultTitle(updated.title), let importedTitle, !importedTitle.isEmpty {
+            updated.title = importedTitle
+        }
+        updated.questions.append(contentsOf: fresh)
+        mutateQuiz(to: updated, actionName: actionName)
+        selectedQuestionID = fresh.first?.id ?? selectedQuestionID
+    }
+
+    private func isDefaultTitle(_ title: String) -> Bool {
+        let trimmed = title.trimmingCharacters(in: .whitespaces)
+        return trimmed.isEmpty || trimmed == "Untitled Quiz"
+    }
+
+    private func exportPaperExam(_ options: PaperExamOptions) {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.html]
+        let base = (defaultExportFilename as NSString).deletingPathExtension
+        panel.nameFieldStringValue = base + (options.includeAnswerKey ? "-answer-key.html" : "-exam.html")
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let document = PaperExamBuilder().document(for: quiz, options: options)
+            try document.write(to: url, atomically: true, encoding: .utf8)
+        } catch {
+            errorMessage = "Paper exam export failed: \(error.localizedDescription)"
         }
     }
 
@@ -372,30 +863,36 @@ struct ContentView: View {
         do {
             let document = FormattedDocumentBuilder().document(for: quiz)
             try document.write(to: url, atomically: true, encoding: .utf8)
-            statusMessage = "Exported formatted document to \(url.lastPathComponent)."
         } catch {
-            statusMessage = "Document export failed: \(error.localizedDescription)"
+            errorMessage = "Document export failed: \(error.localizedDescription)"
         }
     }
 
     private func prepareExport(engine: CanvasQuizEngine) {
         let altIssues = QuizAccessibilityValidator().imagesMissingAltText(in: quiz)
         guard altIssues.isEmpty else {
-            statusMessage = "Export blocked — add alt text first. \(altIssues.joined(separator: "; "))."
+            errorMessage = "Export blocked — add alt text first. \(altIssues.joined(separator: "; "))."
             return
         }
 
-        do {
-            exportDocument = try QTIArchiveDocument(quiz: quiz, engine: engine)
-            isExporterPresented = true
-            statusMessage = "Preparing \(engine.displayName) export."
-        } catch {
-            statusMessage = "Export failed: \(error)"
+        // Validate the package (well-formed XML, manifest consistency, and a
+        // re-import round-trip). Clean packages export straight away; otherwise the
+        // findings are shown first so the user can fix them or proceed anyway.
+        let validationIssues = QTIValidator().validateExport(of: quiz, engine: engine)
+        if validationIssues.isEmpty {
+            finishExport(engine: engine)
+        } else {
+            qtiValidation = QTIValidationContext(engine: engine, issues: validationIssues)
         }
     }
 
-    private func questionCount(_ count: Int) -> String {
-        count == 1 ? "1 question" : "\(count) questions"
+    private func finishExport(engine: CanvasQuizEngine) {
+        do {
+            exportDocument = try QTIArchiveDocument(quiz: quiz, engine: engine)
+            isExporterPresented = true
+        } catch {
+            errorMessage = "Export failed: \(error.localizedDescription)"
+        }
     }
 
     private func checkSpelling() {
@@ -414,81 +911,202 @@ struct ContentView: View {
 struct SidebarView: View {
     @Binding var quiz: Quiz
     @Binding var selectedQuestionID: UUID?
+    let lintFindings: [UUID: [LintFinding]]
     let onAddQuestion: () -> Void
     let onImportMarkedText: () -> Void
     let onImportQTI: (Bool) -> Void
+    let onDuplicate: (UUID) -> Void
+    let onDelete: (UUID) -> Void
+    let onMove: (IndexSet, Int) -> Void
+    let onNudge: (UUID, Int) -> Void
+    let onOpenBank: () -> Void
+    let onMergeFromFile: () -> Void
+    let onImportCommonCartridge: () -> Void
+
+    @State private var searchText = ""
+    @State private var difficultyFilter: QuizDifficulty?
+    @State private var tagFilter: String?
+
+    private let html = HTMLUtilities()
+
+    /// Questions matching the active search + filters, keeping their 1-based numbers.
+    private var visibleQuestions: [(number: Int, question: QuizQuestion)] {
+        let needle = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return quiz.questions.enumerated().compactMap { index, question in
+            if let difficultyFilter, question.difficulty != difficultyFilter { return nil }
+            if let tagFilter, !question.tags.contains(where: { $0.caseInsensitiveCompare(tagFilter) == .orderedSame }) {
+                return nil
+            }
+            if !needle.isEmpty {
+                let haystack = (html.plainText(fromHTML: question.prompt) + " "
+                    + question.type.displayName + " "
+                    + question.tags.joined(separator: " ")).lowercased()
+                if !haystack.contains(needle) { return nil }
+            }
+            return (index + 1, question)
+        }
+    }
+
+    private var isFiltering: Bool {
+        !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || difficultyFilter != nil || tagFilter != nil
+    }
+
+    private var hasFilterableMetadata: Bool {
+        !quiz.allTags.isEmpty || quiz.questions.contains { $0.difficulty != nil }
+    }
+
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                VStack(alignment: .leading, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Quiz")
-                            .font(.title2.bold())
-                        Text("Set the title and manage questions.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+        List(selection: $selectedQuestionID) {
+            Section("Quiz Title") {
+                TextField("Quiz title", text: $quiz.title)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityLabel("Quiz title")
+            }
 
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Title")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        TextField("Quiz title", text: $quiz.title)
-                            .textFieldStyle(.roundedBorder)
+            Section("Questions") {
+                if visibleQuestions.isEmpty {
+                    Text(isFiltering ? "No questions match the filter." : "No questions yet.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                } else if isFiltering {
+                    // Drag reorder is disabled while filtered (row order ≠ quiz order).
+                    ForEach(visibleQuestions, id: \.question.id) { entry in
+                        questionRow(number: entry.number, question: entry.question)
                     }
+                } else {
+                    ForEach(visibleQuestions, id: \.question.id) { entry in
+                        questionRow(number: entry.number, question: entry.question)
+                    }
+                    .onMove(perform: onMove)
                 }
+            }
+        }
+        .listStyle(.sidebar)
+        .navigationTitle("Quiz")
+        .safeAreaInset(edge: .top) { searchBar }
+        .safeAreaInset(edge: .bottom) { bottomBar }
+    }
 
+    private func questionRow(number: Int, question: QuizQuestion) -> some View {
+        SidebarQuestionRow(number: number, question: question, findings: lintFindings[question.id] ?? [])
+            .tag(question.id)
+            .contextMenu {
+                Button("Duplicate Question") { onDuplicate(question.id) }
                 Divider()
+                Button("Move Up") { onNudge(question.id, -1) }
+                    .disabled(number <= 1)
+                Button("Move Down") { onNudge(question.id, 1) }
+                    .disabled(number >= quiz.questions.count)
+                Divider()
+                Button("Delete Question", role: .destructive) { onDelete(question.id) }
+            }
+    }
 
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Questions")
-                            .font(.caption.bold())
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Button(action: onAddQuestion) {
-                            Label("Add", systemImage: "plus")
-                        }
-                        .controlSize(.small)
-                        .help("Add a new question (⌘N)")
-
-                        Menu {
-                            Button("Marked Text…", action: onImportMarkedText)
-                            Divider()
-                            Button("QTI Zip — Keep Formatting…") { onImportQTI(true) }
-                            Button("QTI Zip — Plain Text…") { onImportQTI(false) }
-                        } label: {
-                            Label("Import", systemImage: "square.and.arrow.down")
-                        }
-                        .menuStyle(.borderlessButton)
-                        .fixedSize()
-                        .help("Import questions from marked text or a Canvas QTI zip")
+    private var searchBar: some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                TextField("Filter questions", text: $searchText)
+                    .textFieldStyle(.plain)
+                    .accessibilityLabel("Filter questions")
+                if !searchText.isEmpty {
+                    Button { searchText = "" } label: {
+                        Image(systemName: "xmark.circle.fill")
                     }
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("Clear filter")
+                }
+            }
+            .padding(6)
+            .background(Color(nsColor: .textBackgroundColor), in: .rect(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.2)))
 
-                    ForEach(Array(quiz.questions.enumerated()), id: \.element.id) { index, question in
-                        SidebarQuestionRow(
-                            number: index + 1,
-                            question: question,
-                            isSelected: question.id == selectedQuestionID
-                        ) {
-                            selectedQuestionID = question.id
+            if hasFilterableMetadata {
+                HStack(spacing: 8) {
+                    filterMenu
+                    if isFiltering {
+                        Button("Clear") {
+                            searchText = ""
+                            difficultyFilter = nil
+                            tagFilter = nil
                         }
+                        .font(.caption)
+                        .buttonStyle(.borderless)
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 8)
+        .padding(.bottom, 4)
+    }
+
+    private var filterMenu: some View {
+        Menu {
+            Picker("Difficulty", selection: $difficultyFilter) {
+                Text("Any Difficulty").tag(QuizDifficulty?.none)
+                ForEach(QuizDifficulty.allCases) { difficulty in
+                    Text(difficulty.displayName).tag(QuizDifficulty?.some(difficulty))
+                }
+            }
+            if !quiz.allTags.isEmpty {
+                Picker("Tag", selection: $tagFilter) {
+                    Text("Any Tag").tag(String?.none)
+                    ForEach(quiz.allTags, id: \.self) { tag in
+                        Text(tag).tag(String?.some(tag))
                     }
                 }
             }
-            .padding(18)
-            .frame(maxWidth: .infinity, alignment: .leading)
+        } label: {
+            Label("Filter", systemImage: "line.3.horizontal.decrease.circle")
         }
-        .frame(minWidth: 300, idealWidth: 320, maxWidth: 360)
-        .background(.regularMaterial)
+        .menuStyle(.button)
+        .controlSize(.small)
+        .fixedSize()
+    }
+
+    private var bottomBar: some View {
+        HStack(spacing: 8) {
+            Button(action: onAddQuestion) {
+                Label("Add Question", systemImage: "plus")
+            }
+            .labelStyle(.iconOnly)
+            .help("Add a new question (⇧⌘N)")
+
+            // Icon-only menu with no fixed width so the bar reflows at any sidebar
+            // width instead of being clipped.
+            Menu {
+                Button("Marked Text…", action: onImportMarkedText)
+                Button("QTI Zip — Keep Formatting…") { onImportQTI(true) }
+                Button("QTI Zip — Plain Text…") { onImportQTI(false) }
+                Button("Common Cartridge (.imscc)…", action: onImportCommonCartridge)
+                Divider()
+                Button("Merge from File…", action: onMergeFromFile)
+                Button("Question Bank…", action: onOpenBank)
+            } label: {
+                Label("Add Content", systemImage: "tray.and.arrow.down")
+            }
+            .menuStyle(.borderlessButton)
+            .labelStyle(.iconOnly)
+            .help("Import, merge, or add questions from the bank")
+
+            Spacer(minLength: 0)
+        }
+        .buttonStyle(.borderless)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
     }
 }
 
 struct SidebarQuestionRow: View {
     let number: Int
     let question: QuizQuestion
-    let isSelected: Bool
-    let action: () -> Void
+    var findings: [LintFinding] = []
 
     private var plainPrompt: String {
         let text = HTMLUtilities().plainText(fromHTML: question.prompt)
@@ -496,31 +1114,50 @@ struct SidebarQuestionRow: View {
     }
 
     var body: some View {
-        Button(action: action) {
-            HStack(alignment: .top, spacing: 8) {
-                Text("\(number).")
-                    .font(.body.monospacedDigit())
-                    .foregroundStyle(isSelected ? .white.opacity(0.85) : .secondary)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(plainPrompt)
-                        .font(.body)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                        .foregroundStyle(isSelected ? .white : .primary)
+        // No manual selection coloring: the enclosing List inverts foreground colors
+        // for the selected row automatically, which also adapts to Increase Contrast.
+        HStack(alignment: .top, spacing: 8) {
+            Text("\(number).")
+                .font(.body.monospacedDigit())
+                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(plainPrompt)
+                    .font(.body)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 6) {
                     Text(question.type.displayName)
                         .font(.caption)
-                        .foregroundStyle(isSelected ? .white.opacity(0.85) : .secondary)
+                        .foregroundStyle(.secondary)
+                    if let difficulty = question.difficulty {
+                        Text(difficulty.displayName)
+                            .font(.caption2.weight(.medium))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(Color.secondary.opacity(0.15))
+                            .clipShape(.capsule)
+                    }
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .background(isSelected ? Color.accentColor : Color.clear)
-            .clipShape(.rect(cornerRadius: 8))
-            .contentShape(.rect)
+            Spacer(minLength: 0)
+            LintBadge(findings: findings)
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Question \(number), \(question.type.displayName): \(plainPrompt)")
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(.rect)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    private var accessibilityLabel: String {
+        var label = "Question \(number), \(question.type.displayName)"
+        if let difficulty = question.difficulty { label += ", \(difficulty.displayName)" }
+        label += ": \(plainPrompt)"
+        if !findings.isEmpty {
+            let warnings = findings.filter { $0.severity == .warning }.count
+            label += warnings > 0 ? ". \(warnings) warning\(warnings == 1 ? "" : "s")" : ". \(findings.count) suggestion\(findings.count == 1 ? "" : "s")"
+        }
+        return label
     }
 }
 
@@ -541,6 +1178,16 @@ struct QuestionEditor: View {
     @State private var reviewPresentation: ReviewPresentation?
     @State private var undoSnapshot: QuizQuestion?
     @State private var isFeedbackExpanded = false
+    @State private var isGenerating = false
+    @State private var generationError: String?
+
+    private var runner: ConfiguredAIRunner {
+        ConfiguredAIRunner(provider: provider, apiKey: apiKey, endpoint: endpoint, model: model)
+    }
+
+    private var findings: [LintFinding] {
+        QuestionLinter().findings(for: question)
+    }
 
     var body: some View {
         ScrollView {
@@ -576,8 +1223,25 @@ struct QuestionEditor: View {
                         }
                     }
                     .disabled(isReviewing)
+                    .buttonStyle(.glassProminent)
                     .fixedSize()
                     .help("Review this question for item-writing quality and apply suggested edits")
+
+                    Menu {
+                        Button("Generate Distractors") { generateDistractors() }
+                            .disabled(!canGenerateDistractors)
+                        Button("Generate Feedback") { generateFeedback() }
+                    } label: {
+                        if isGenerating {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Label("AI Tools", systemImage: "wand.and.stars")
+                        }
+                    }
+                    .menuIndicator(.hidden)
+                    .disabled(isGenerating)
+                    .fixedSize()
+                    .help("Generate distractors or feedback for this question with AI")
 
                     Button(role: .destructive, action: onDelete) {
                         Label("Delete Question", systemImage: "trash")
@@ -596,23 +1260,17 @@ struct QuestionEditor: View {
                     .fixedSize()
                 }
 
+                QuestionMetadataEditor(question: $question)
+
                 if let reviewError {
-                    GroupBox {
-                        HStack(alignment: .top, spacing: 8) {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundStyle(.orange)
-                                .accessibilityHidden(true)
-                            Text(reviewError)
-                                .font(.callout)
-                                .fixedSize(horizontal: false, vertical: true)
-                            Spacer()
-                            Button("Dismiss") { self.reviewError = nil }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    } label: {
-                        Label("AI Review", systemImage: "sparkles")
-                    }
+                    aiMessageBox(reviewError, title: "AI Review") { self.reviewError = nil }
                 }
+
+                if let generationError {
+                    aiMessageBox(generationError, title: "AI Tools") { self.generationError = nil }
+                }
+
+                LintFindingsSection(findings: findings)
 
                 RichTextField(title: "Prompt", text: $question.prompt, minHeight: 160)
 
@@ -646,6 +1304,90 @@ struct QuestionEditor: View {
     private func undoAIChanges() {
         if let undoSnapshot { question = undoSnapshot }
         undoSnapshot = nil
+    }
+
+    @ViewBuilder
+    private func aiMessageBox(_ message: String, title: String, onDismiss: @escaping () -> Void) -> some View {
+        GroupBox {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                    .accessibilityHidden(true)
+                Text(message)
+                    .font(.callout)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer()
+                Button("Dismiss", action: onDismiss)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } label: {
+            Label(title, systemImage: "sparkles")
+        }
+    }
+
+    private var canGenerateDistractors: Bool {
+        (question.type == .multipleChoice || question.type == .multipleAnswer)
+            && question.answers.contains { $0.isCorrect }
+    }
+
+    /// Generates distractors for the current stem + correct answer and appends
+    /// them through the same apply/undo path the AI review uses.
+    private func generateDistractors() {
+        guard let correct = question.answers.first(where: { $0.isCorrect })?.text,
+              !correct.trimmingCharacters(in: .whitespaces).isEmpty else {
+            generationError = "Mark a correct answer first so distractors can be contrasted against it."
+            return
+        }
+        let service = QuestionAuthoringService()
+        let stem = HTMLUtilities().plainText(fromHTML: question.prompt)
+        let prompt = service.makeDistractorsPrompt(prompt: stem, correctAnswer: correct, count: 3)
+        runGeneration(system: service.systemInstruction, user: prompt, temperature: 0.7) { raw in
+            let distractors = service.parseDistractors(raw)
+            guard !distractors.isEmpty else {
+                generationError = "No distractors were returned. Try again or rephrase the stem."
+                return
+            }
+            applyEdit { question in
+                question.answers.append(contentsOf: distractors.map { QuizAnswer(text: $0, isCorrect: false) })
+            }
+        }
+    }
+
+    private func generateFeedback() {
+        let service = QuestionAuthoringService()
+        let prompt = service.makeFeedbackPrompt(question: question, quizTitle: quizTitle)
+        runGeneration(system: service.systemInstruction, user: prompt, temperature: 0.4) { raw in
+            guard let feedback = service.parseFeedback(raw) else {
+                generationError = "No feedback was returned."
+                return
+            }
+            applyEdit { $0.feedback = feedback }
+            isFeedbackExpanded = true
+        }
+    }
+
+    private func runGeneration(system: String, user: String, temperature: Double, apply: @escaping (String) -> Void) {
+        generationError = nil
+        guard runner.supportsAutoRun else {
+            generationError = "Switch to the API or Apple Foundation Models provider to generate here, or use Author with AI for copy/paste."
+            return
+        }
+        isGenerating = true
+        let runner = self.runner
+        Task {
+            do {
+                let raw = try await runner.run(system: system, user: user, temperature: temperature)
+                await MainActor.run {
+                    isGenerating = false
+                    apply(raw)
+                }
+            } catch {
+                await MainActor.run {
+                    isGenerating = false
+                    generationError = "AI request failed: \(error)"
+                }
+            }
+        }
     }
 
     private func reviewQuestion() {
@@ -714,6 +1456,9 @@ struct QuestionReviewSheet: View {
     private enum Field { case prompt, answers, matches, feedback }
     @State private var appliedFields: Set<Field> = []
 
+    // Bullet glyph size scales with Dynamic Type instead of a fixed point size.
+    @ScaledMetric(relativeTo: .callout) private var suggestionBulletSize: CGFloat = 5
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 4) {
@@ -746,7 +1491,7 @@ struct QuestionReviewSheet: View {
                                         .fixedSize(horizontal: false, vertical: true)
                                 } icon: {
                                     Image(systemName: "circle.fill")
-                                        .font(.system(size: 5))
+                                        .font(.system(size: suggestionBulletSize))
                                         .foregroundStyle(.secondary)
                                         .accessibilityHidden(true)
                                 }
@@ -1022,9 +1767,11 @@ struct AIPanel: View {
     @AppStorage("aiEndpoint") private var endpoint = "https://api.openai.com/v1/chat/completions"
     @AppStorage("aiModel") private var model = "gpt-4o-mini"
     @State private var feature = AIFeature.review
-    @State private var instruction = "Check the quiz for clarity, answer-key issues, accessibility, feedback quality, and Canvas import readiness."
-    @State private var output = "Run a feature to see results here."
+    @State private var instruction = "Check the quiz for clarity, answer-key issues, accessibility, feedback quality, and LMS import readiness."
     @State private var isRunning = false
+    @State private var isConfigPresented = false
+    @State private var aiResult: AIResultContext?
+    @State private var status: PanelStatus?
 
     var body: some View {
         ScrollView {
@@ -1036,37 +1783,31 @@ struct AIPanel: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
-                GroupBox("Provider") {
-                    VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Provider")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Menu {
                         Picker("Provider", selection: $provider) {
                             ForEach(AIProvider.allCases) { provider in
                                 Text(provider.displayName).tag(provider)
                             }
                         }
-                        .labelsHidden()
+                        .pickerStyle(.inline)
 
-                        if provider == .openAICompatible {
-                            LabeledField("API key") {
-                                SecureField("sk-…", text: $apiKey)
-                            }
-                            LabeledField("Endpoint") {
-                                TextField("https://api.openai.com/v1/chat/completions", text: $endpoint)
-                            }
-                            LabeledField("Model") {
-                                TextField("gpt-4o-mini", text: $model)
-                            }
-                        } else if provider == .copyPaste {
-                            Text("Copies a model-ready prompt. Paste the response back below.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        } else {
-                            Text("Uses Apple Foundation Models on supported macOS versions when the local model is available.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                        Divider()
+
+                        Button {
+                            isConfigPresented = true
+                        } label: {
+                            Label("Configure…", systemImage: "gearshape")
                         }
+                    } label: {
+                        Text(provider.displayName)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .textFieldStyle(.roundedBorder)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .menuStyle(.button)
+                    .help("Choose the AI provider and configure API credentials")
                 }
 
                 Picker("Feature", selection: $feature) {
@@ -1090,21 +1831,37 @@ struct AIPanel: View {
                         }
                     }
                     .disabled(isRunning)
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.glassProminent)
 
                     if provider == .copyPaste {
                         Button("Paste Response", action: pasteAIResponse)
+                            .buttonStyle(.glass)
                     }
                 }
 
-                LabeledTextEditor(title: "Result", text: $output, minHeight: 240)
+                if let status {
+                    Label(status.text, systemImage: status.isError ? "exclamationmark.triangle.fill" : "info.circle")
+                        .font(.caption)
+                        .foregroundStyle(status.isError ? .orange : .secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Label("Results open in a window you can read, copy, or save.", systemImage: "rectangle.portrait.and.arrow.right")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.vertical, 24)
             .padding(.leading, 24)
             .padding(.trailing, 32)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .background(Color(nsColor: .controlBackgroundColor))
+        .sheet(isPresented: $isConfigPresented) {
+            AISettingsSheet()
+        }
+        .sheet(item: $aiResult) { result in
+            AIResultSheet(result: result)
+        }
     }
 
     private var primaryActionTitle: String {
@@ -1136,25 +1893,29 @@ struct AIPanel: View {
 
     private func runOpenAICompatibleRequest() {
         guard let endpointURL = URL(string: endpoint) else {
-            output = "Enter a valid endpoint URL."
+            status = PanelStatus(text: "Enter a valid endpoint URL.", isError: true)
             return
         }
 
         isRunning = true
-        output = "Running \(feature.displayName)…"
+        status = nil
         let configuration = AIConfiguration(apiKey: apiKey, endpoint: endpointURL, model: model)
+        let feature = self.feature
+        let quiz = self.quiz
+        let instruction = self.instruction
 
         Task {
-            let result: String
             do {
-                result = try await AIClient().run(feature: feature, quiz: quiz, instruction: instruction, configuration: configuration)
+                let result = try await AIClient().run(feature: feature, quiz: quiz, instruction: instruction, configuration: configuration)
+                await MainActor.run {
+                    isRunning = false
+                    presentResult(result)
+                }
             } catch {
-                result = "AI request failed: \(error)"
-            }
-
-            await MainActor.run {
-                output = result
-                isRunning = false
+                await MainActor.run {
+                    isRunning = false
+                    status = PanelStatus(text: "AI request failed: \(error)", isError: true)
+                }
             }
         }
     }
@@ -1163,25 +1924,93 @@ struct AIPanel: View {
         let prompt = AIPromptBuilder().makePrompt(feature: feature, quiz: quiz, userInstruction: instruction)
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(prompt, forType: .string)
-        output = "Prompt copied. Paste it into Claude, ChatGPT, or another model, then paste the response back here."
+        status = PanelStatus(text: "Prompt copied. Run it in your assistant, then Paste Response.", isError: false)
     }
 
     private func pasteAIResponse() {
-        output = NSPasteboard.general.string(forType: .string) ?? "Clipboard does not contain text."
+        guard let pasted = NSPasteboard.general.string(forType: .string),
+              !pasted.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            status = PanelStatus(text: "Clipboard does not contain text.", isError: true)
+            return
+        }
+        presentResult(pasted)
     }
 
     private func runFoundationModelsRequest() {
         isRunning = true
-        output = "Checking Apple Foundation Models availability…"
+        status = nil
         let prompt = AIPromptBuilder().makePrompt(feature: feature, quiz: quiz, userInstruction: instruction)
 
         Task {
             let result = await FoundationModelsRunner.run(prompt: prompt)
             await MainActor.run {
-                output = result
                 isRunning = false
+                presentResult(result)
             }
         }
+    }
+
+    private func presentResult(_ markdown: String) {
+        aiResult = AIResultContext(title: feature.displayName, markdown: markdown)
+    }
+}
+
+/// Modal that configures the AI provider and API credentials. Edits the same
+/// @AppStorage-backed values the AI panel reads, so changes persist immediately.
+struct AISettingsSheet: View {
+    @AppStorage("aiProvider") private var provider = AIProvider.openAICompatible
+    @AppStorage("aiAPIKey") private var apiKey = ""
+    @AppStorage("aiEndpoint") private var endpoint = "https://api.openai.com/v1/chat/completions"
+    @AppStorage("aiModel") private var model = "gpt-4o-mini"
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("AI Configuration")
+                .font(.title2.bold())
+                .padding(20)
+
+            Divider()
+
+            Form {
+                Picker("Provider", selection: $provider) {
+                    ForEach(AIProvider.allCases) { provider in
+                        Text(provider.displayName).tag(provider)
+                    }
+                }
+
+                switch provider {
+                case .openAICompatible:
+                    Section("API Credentials") {
+                        SecureField("API key", text: $apiKey, prompt: Text("sk-…"))
+                        TextField("Endpoint", text: $endpoint, prompt: Text("https://api.openai.com/v1/chat/completions"))
+                        TextField("Model", text: $model, prompt: Text("gpt-4o-mini"))
+                    }
+                case .copyPaste:
+                    Section {
+                        Text("Copies a model-ready prompt to your clipboard. Paste the response back into the panel — no API key needed.")
+                            .foregroundStyle(.secondary)
+                    }
+                case .foundationModels:
+                    Section {
+                        Text("Uses Apple Foundation Models on-device when Apple Intelligence is available on this Mac. No API key needed.")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .formStyle(.grouped)
+
+            Divider()
+
+            HStack {
+                Spacer()
+                Button("Done") { dismiss() }
+                    .buttonStyle(.glassProminent)
+                    .keyboardShortcut(.defaultAction)
+            }
+            .padding(20)
+        }
+        .frame(width: 460, height: 420)
     }
 }
 
@@ -1482,9 +2311,10 @@ struct RichTextField: View {
             }
             toolbarButton("Insert image", systemImage: "photo") { isImageSheetPresented = true }
         }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 3)
-        .background(.quaternary, in: .rect(cornerRadius: 8))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        // Floating Liquid Glass control cluster over the editor content.
+        .glassEffect(.regular.interactive(), in: .capsule)
     }
 
     private var toolbarDivider: some View {
@@ -1667,26 +2497,6 @@ struct QuizPreviewSheet: View {
             FullHTMLPreview(html: html)
         }
         .frame(minWidth: 720, minHeight: 640)
-    }
-}
-
-struct StatusBar: View {
-    let message: String
-
-    var body: some View {
-        HStack {
-            Text(message)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Spacer()
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 6)
-        .background(.bar)
-        // Announce status changes (imports, exports, errors) to VoiceOver.
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Status: \(message)")
-        .accessibilityAddTraits(.updatesFrequently)
     }
 }
 
