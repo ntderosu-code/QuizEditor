@@ -200,15 +200,12 @@ struct ContentView: View {
             .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 320)
         } detail: {
             ZStack {
-                // Tinted canvas that bleeds under the floating Liquid Glass
-                // sidebar and inspector via backgroundExtensionEffect, so the
-                // glass has vibrant content to refract (WWDC25 session 356).
-                LinearGradient(
-                    colors: [Color.accentColor.opacity(0.20), Color.accentColor.opacity(0.05)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                .backgroundExtensionEffect()
+                // Neutral canvas behind the floating editor card. It still bleeds
+                // under the Liquid Glass sidebar and inspector via
+                // backgroundExtensionEffect (WWDC25 session 356), but carries no
+                // accent tint so the central editing area stays neutral.
+                Color(nsColor: .windowBackgroundColor)
+                    .backgroundExtensionEffect()
 
                 // The editor floats as a card on top of the canvas.
                 editorDetail
@@ -453,35 +450,42 @@ struct ContentView: View {
             } description: {
                 Text("Choose a question or add a new one to start writing.")
             } actions: {
-                Button {
-                    addQuestion()
-                } label: {
-                    Label("Add Question", systemImage: "plus")
-                }
-                .buttonStyle(.borderedProminent)
+                // Stack the actions so they never overflow the (sometimes narrow)
+                // editor card. Each stretches to a shared width for a tidy column.
+                VStack(spacing: 8) {
+                    Button {
+                        addQuestion()
+                    } label: {
+                        Label("Add Question", systemImage: "plus")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
 
-                Button {
-                    isImporterPresented = true
-                } label: {
-                    Label("Import Marked Text", systemImage: "square.and.arrow.down")
-                }
+                    Button {
+                        isImporterPresented = true
+                    } label: {
+                        Label("Import Marked Text", systemImage: "square.and.arrow.down")
+                            .frame(maxWidth: .infinity)
+                    }
 
-                Menu {
-                    Button("Keep Formatting…") {
+                    Menu {
+                        Button("Keep Formatting…") {
+                            importPreservesFormatting = true
+                            isQTIImporterPresented = true
+                        }
+                        Button("Plain Text…") {
+                            importPreservesFormatting = false
+                            isQTIImporterPresented = true
+                        }
+                    } label: {
+                        Label("Import QTI Zip", systemImage: "doc.zipper")
+                            .frame(maxWidth: .infinity)
+                    } primaryAction: {
                         importPreservesFormatting = true
                         isQTIImporterPresented = true
                     }
-                    Button("Plain Text…") {
-                        importPreservesFormatting = false
-                        isQTIImporterPresented = true
-                    }
-                } label: {
-                    Label("Import QTI Zip", systemImage: "doc.zipper")
-                } primaryAction: {
-                    importPreservesFormatting = true
-                    isQTIImporterPresented = true
                 }
-                .fixedSize()
+                .frame(width: 240)
             }
         }
     }
@@ -1660,9 +1664,10 @@ struct AIPanel: View {
     @AppStorage("aiModel") private var model = "gpt-4o-mini"
     @State private var feature = AIFeature.review
     @State private var instruction = "Check the quiz for clarity, answer-key issues, accessibility, feedback quality, and Canvas import readiness."
-    @State private var output = "Run a feature to see results here."
     @State private var isRunning = false
     @State private var isConfigPresented = false
+    @State private var aiResult: AIResultContext?
+    @State private var status: PanelStatus?
 
     var body: some View {
         ScrollView {
@@ -1730,7 +1735,17 @@ struct AIPanel: View {
                     }
                 }
 
-                LabeledTextEditor(title: "Result", text: $output, minHeight: 240)
+                if let status {
+                    Label(status.text, systemImage: status.isError ? "exclamationmark.triangle.fill" : "info.circle")
+                        .font(.caption)
+                        .foregroundStyle(status.isError ? .orange : .secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Label("Results open in a window you can read, copy, or save.", systemImage: "rectangle.portrait.and.arrow.right")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.vertical, 24)
             .padding(.leading, 24)
@@ -1739,6 +1754,9 @@ struct AIPanel: View {
         }
         .sheet(isPresented: $isConfigPresented) {
             AISettingsSheet()
+        }
+        .sheet(item: $aiResult) { result in
+            AIResultSheet(result: result)
         }
     }
 
@@ -1771,25 +1789,29 @@ struct AIPanel: View {
 
     private func runOpenAICompatibleRequest() {
         guard let endpointURL = URL(string: endpoint) else {
-            output = "Enter a valid endpoint URL."
+            status = PanelStatus(text: "Enter a valid endpoint URL.", isError: true)
             return
         }
 
         isRunning = true
-        output = "Running \(feature.displayName)…"
+        status = nil
         let configuration = AIConfiguration(apiKey: apiKey, endpoint: endpointURL, model: model)
+        let feature = self.feature
+        let quiz = self.quiz
+        let instruction = self.instruction
 
         Task {
-            let result: String
             do {
-                result = try await AIClient().run(feature: feature, quiz: quiz, instruction: instruction, configuration: configuration)
+                let result = try await AIClient().run(feature: feature, quiz: quiz, instruction: instruction, configuration: configuration)
+                await MainActor.run {
+                    isRunning = false
+                    presentResult(result)
+                }
             } catch {
-                result = "AI request failed: \(error)"
-            }
-
-            await MainActor.run {
-                output = result
-                isRunning = false
+                await MainActor.run {
+                    isRunning = false
+                    status = PanelStatus(text: "AI request failed: \(error)", isError: true)
+                }
             }
         }
     }
@@ -1798,25 +1820,34 @@ struct AIPanel: View {
         let prompt = AIPromptBuilder().makePrompt(feature: feature, quiz: quiz, userInstruction: instruction)
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(prompt, forType: .string)
-        output = "Prompt copied. Paste it into Claude, ChatGPT, or another model, then paste the response back here."
+        status = PanelStatus(text: "Prompt copied. Run it in your assistant, then Paste Response.", isError: false)
     }
 
     private func pasteAIResponse() {
-        output = NSPasteboard.general.string(forType: .string) ?? "Clipboard does not contain text."
+        guard let pasted = NSPasteboard.general.string(forType: .string),
+              !pasted.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            status = PanelStatus(text: "Clipboard does not contain text.", isError: true)
+            return
+        }
+        presentResult(pasted)
     }
 
     private func runFoundationModelsRequest() {
         isRunning = true
-        output = "Checking Apple Foundation Models availability…"
+        status = nil
         let prompt = AIPromptBuilder().makePrompt(feature: feature, quiz: quiz, userInstruction: instruction)
 
         Task {
             let result = await FoundationModelsRunner.run(prompt: prompt)
             await MainActor.run {
-                output = result
                 isRunning = false
+                presentResult(result)
             }
         }
+    }
+
+    private func presentResult(_ markdown: String) {
+        aiResult = AIResultContext(title: feature.displayName, markdown: markdown)
     }
 }
 
