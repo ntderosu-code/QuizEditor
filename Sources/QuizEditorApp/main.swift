@@ -155,11 +155,28 @@ struct ContentView: View {
             )
             .navigationSplitViewColumnWidth(min: 170, ideal: 220, max: 300)
         } detail: {
-            editorDetail
-                // Fill the detail column so the window can grow freely.
-                // Without maxWidth/maxHeight the content reports a fixed ideal
-                // size and the window gets a hard maximum size.
-                .frame(minWidth: 320, maxWidth: .infinity, maxHeight: .infinity)
+            ZStack {
+                // Tinted canvas that bleeds under the floating Liquid Glass
+                // sidebar and inspector via backgroundExtensionEffect, so the
+                // glass has vibrant content to refract (WWDC25 session 356).
+                LinearGradient(
+                    colors: [Color.accentColor.opacity(0.20), Color.accentColor.opacity(0.05)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .backgroundExtensionEffect()
+
+                // The editor floats as a card on top of the canvas.
+                editorDetail
+                    .background(Color(nsColor: .textBackgroundColor))
+                    .clipShape(.rect(cornerRadius: 16))
+                    .shadow(color: .black.opacity(0.12), radius: 10, y: 2)
+                    .padding(16)
+            }
+            // Fill the detail column so the window can grow freely. Without
+            // maxWidth/maxHeight the content reports a fixed ideal size and the
+            // window gets a hard maximum size.
+            .frame(minWidth: 320, maxWidth: .infinity, maxHeight: .infinity)
         }
         .inspector(isPresented: $isAIPanelVisible) {
             AIPanel(quiz: quiz)
@@ -185,7 +202,7 @@ struct ContentView: View {
                 Button {
                     isImporterPresented = true
                 } label: {
-                    Label("Import Marked Text", systemImage: "text.badge.plus")
+                    Label("Import Marked Text", systemImage: "square.and.arrow.down")
                 }
                 .keyboardShortcut("i", modifiers: [.command, .shift])
                 .help("Import questions from marked plain text (⇧⌘I)")
@@ -200,7 +217,7 @@ struct ContentView: View {
                         isQTIImporterPresented = true
                     }
                 } label: {
-                    Label("Import QTI Zip", systemImage: "archivebox")
+                    Label("Import QTI Zip", systemImage: "doc.zipper")
                 } primaryAction: {
                     importPreservesFormatting = true
                     isQTIImporterPresented = true
@@ -326,11 +343,41 @@ struct ContentView: View {
             }
             .id(quiz.questions[selectedIndex].id)
         } else {
-            ContentUnavailableView(
-                "No Question Selected",
-                systemImage: "questionmark.square.dashed",
-                description: Text("Choose a question or add a new one to start writing.")
-            )
+            ContentUnavailableView {
+                Label("No Question Selected", systemImage: "questionmark.square.dashed")
+            } description: {
+                Text("Choose a question or add a new one to start writing.")
+            } actions: {
+                Button {
+                    addQuestion()
+                } label: {
+                    Label("Add Question", systemImage: "plus")
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button {
+                    isImporterPresented = true
+                } label: {
+                    Label("Import Marked Text", systemImage: "square.and.arrow.down")
+                }
+
+                Menu {
+                    Button("Keep Formatting…") {
+                        importPreservesFormatting = true
+                        isQTIImporterPresented = true
+                    }
+                    Button("Plain Text…") {
+                        importPreservesFormatting = false
+                        isQTIImporterPresented = true
+                    }
+                } label: {
+                    Label("Import QTI Zip", systemImage: "doc.zipper")
+                } primaryAction: {
+                    importPreservesFormatting = true
+                    isQTIImporterPresented = true
+                }
+                .fixedSize()
+            }
         }
     }
 
@@ -478,7 +525,8 @@ struct SidebarView: View {
             .buttonStyle(.borderless)
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .background(.bar)
+            // No .background(.bar): the legacy sidebar material blocks the
+            // Liquid Glass from showing through (per WWDC 2025 session 310).
         }
     }
 }
@@ -1033,7 +1081,10 @@ struct AIPanel: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
-                LabeledContent("Provider") {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Provider")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     Menu {
                         Picker("Provider", selection: $provider) {
                             ForEach(AIProvider.allCases) { provider in
@@ -1051,9 +1102,9 @@ struct AIPanel: View {
                         }
                     } label: {
                         Text(provider.displayName)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .menuStyle(.button)
-                    .fixedSize()
                     .help("Choose the AI provider and configure API credentials")
                 }
 
