@@ -39,12 +39,21 @@ struct QuizDocument: FileDocument {
 
 @main
 struct QuizEditorApp: App {
+    init() {
+        // Open straight into a blank untitled document instead of showing the
+        // open-file panel on launch.
+        UserDefaults.standard.register(
+            defaults: ["NSShowAppCentricOpenPanelInsteadOfUntitledFile": false]
+        )
+    }
+
     var body: some Scene {
         DocumentGroup(newDocument: QuizDocument()) { file in
             ContentView(quiz: file.$document.quiz)
-                .frame(minWidth: 1200, idealWidth: 1320, minHeight: 720)
+                .frame(minWidth: 760, minHeight: 480)
         }
         .windowToolbarStyle(.unified)
+        .defaultSize(width: 1200, height: 760)
         .commands {
             CommandGroup(after: .help) {
                 AcknowledgementsMenuButton()
@@ -144,17 +153,23 @@ struct ContentView: View {
                     isQTIImporterPresented = true
                 }
             )
-            .navigationSplitViewColumnWidth(min: 300, ideal: 320, max: 360)
+            .navigationSplitViewColumnWidth(min: 170, ideal: 220, max: 300)
         } detail: {
             editorDetail
-                .frame(minWidth: 520)
+                // Fill the detail column so the window can grow freely.
+                // Without maxWidth/maxHeight the content reports a fixed ideal
+                // size and the window gets a hard maximum size.
+                .frame(minWidth: 320, maxWidth: .infinity, maxHeight: .infinity)
         }
         .inspector(isPresented: $isAIPanelVisible) {
             AIPanel(quiz: quiz)
-                .inspectorColumnWidth(min: 380, ideal: 420, max: 540)
+                .inspectorColumnWidth(min: 280, ideal: 320, max: 440)
         }
         .toolbar {
-            ToolbarItemGroup {
+            // Grouped by function so each cluster renders as its own Liquid
+            // Glass capsule, separated by ToolbarSpacer (not crammed into one
+            // shared glass background).
+            ToolbarItem {
                 Button {
                     addQuestion()
                 } label: {
@@ -162,9 +177,11 @@ struct ContentView: View {
                 }
                 .keyboardShortcut("n", modifiers: [.command, .shift])
                 .help("Add a new question (⇧⌘N)")
+            }
 
-                Divider()
+            ToolbarSpacer(.fixed)
 
+            ToolbarItemGroup {
                 Button {
                     isImporterPresented = true
                 } label: {
@@ -189,7 +206,11 @@ struct ContentView: View {
                     isQTIImporterPresented = true
                 }
                 .help("Import a Canvas QTI .zip package — keep formatting or import as plain text")
+            }
 
+            ToolbarSpacer(.fixed)
+
+            ToolbarItemGroup {
                 Menu {
                     Section("Canvas QTI Package") {
                         ForEach(CanvasQuizEngine.allCases) { engine in
@@ -215,9 +236,11 @@ struct ContentView: View {
                 }
                 .keyboardShortcut("p", modifiers: [.command, .shift])
                 .help("Preview a formatted version of the quiz (⇧⌘P)")
+            }
 
-                Divider()
+            ToolbarSpacer(.fixed)
 
+            ToolbarItem {
                 Menu {
                     Button("Check Spelling", action: checkSpelling)
                     Button("Show Spelling and Grammar", action: showSpellingPanel)
@@ -545,6 +568,7 @@ struct QuestionEditor: View {
                         }
                     }
                     .disabled(isReviewing)
+                    .buttonStyle(.glassProminent)
                     .fixedSize()
                     .help("Review this question for item-writing quality and apply suggested edits")
 
@@ -997,6 +1021,7 @@ struct AIPanel: View {
     @State private var instruction = "Check the quiz for clarity, answer-key issues, accessibility, feedback quality, and Canvas import readiness."
     @State private var output = "Run a feature to see results here."
     @State private var isRunning = false
+    @State private var isConfigPresented = false
 
     var body: some View {
         ScrollView {
@@ -1008,37 +1033,28 @@ struct AIPanel: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
-                GroupBox("Provider") {
-                    VStack(alignment: .leading, spacing: 10) {
+                LabeledContent("Provider") {
+                    Menu {
                         Picker("Provider", selection: $provider) {
                             ForEach(AIProvider.allCases) { provider in
                                 Text(provider.displayName).tag(provider)
                             }
                         }
-                        .labelsHidden()
+                        .pickerStyle(.inline)
 
-                        if provider == .openAICompatible {
-                            LabeledField("API key") {
-                                SecureField("sk-…", text: $apiKey)
-                            }
-                            LabeledField("Endpoint") {
-                                TextField("https://api.openai.com/v1/chat/completions", text: $endpoint)
-                            }
-                            LabeledField("Model") {
-                                TextField("gpt-4o-mini", text: $model)
-                            }
-                        } else if provider == .copyPaste {
-                            Text("Copies a model-ready prompt. Paste the response back below.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        } else {
-                            Text("Uses Apple Foundation Models on supported macOS versions when the local model is available.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                        Divider()
+
+                        Button {
+                            isConfigPresented = true
+                        } label: {
+                            Label("Configure…", systemImage: "gearshape")
                         }
+                    } label: {
+                        Text(provider.displayName)
                     }
-                    .textFieldStyle(.roundedBorder)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .menuStyle(.button)
+                    .fixedSize()
+                    .help("Choose the AI provider and configure API credentials")
                 }
 
                 Picker("Feature", selection: $feature) {
@@ -1062,10 +1078,11 @@ struct AIPanel: View {
                         }
                     }
                     .disabled(isRunning)
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.glassProminent)
 
                     if provider == .copyPaste {
                         Button("Paste Response", action: pasteAIResponse)
+                            .buttonStyle(.glass)
                     }
                 }
 
@@ -1075,6 +1092,9 @@ struct AIPanel: View {
             .padding(.leading, 24)
             .padding(.trailing, 32)
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .sheet(isPresented: $isConfigPresented) {
+            AISettingsSheet()
         }
     }
 
@@ -1153,6 +1173,65 @@ struct AIPanel: View {
                 isRunning = false
             }
         }
+    }
+}
+
+/// Modal that configures the AI provider and API credentials. Edits the same
+/// @AppStorage-backed values the AI panel reads, so changes persist immediately.
+struct AISettingsSheet: View {
+    @AppStorage("aiProvider") private var provider = AIProvider.openAICompatible
+    @AppStorage("aiAPIKey") private var apiKey = ""
+    @AppStorage("aiEndpoint") private var endpoint = "https://api.openai.com/v1/chat/completions"
+    @AppStorage("aiModel") private var model = "gpt-4o-mini"
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("AI Configuration")
+                .font(.title2.bold())
+                .padding(20)
+
+            Divider()
+
+            Form {
+                Picker("Provider", selection: $provider) {
+                    ForEach(AIProvider.allCases) { provider in
+                        Text(provider.displayName).tag(provider)
+                    }
+                }
+
+                switch provider {
+                case .openAICompatible:
+                    Section("API Credentials") {
+                        SecureField("API key", text: $apiKey, prompt: Text("sk-…"))
+                        TextField("Endpoint", text: $endpoint, prompt: Text("https://api.openai.com/v1/chat/completions"))
+                        TextField("Model", text: $model, prompt: Text("gpt-4o-mini"))
+                    }
+                case .copyPaste:
+                    Section {
+                        Text("Copies a model-ready prompt to your clipboard. Paste the response back into the panel — no API key needed.")
+                            .foregroundStyle(.secondary)
+                    }
+                case .foundationModels:
+                    Section {
+                        Text("Uses Apple Foundation Models on-device when Apple Intelligence is available on this Mac. No API key needed.")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .formStyle(.grouped)
+
+            Divider()
+
+            HStack {
+                Spacer()
+                Button("Done") { dismiss() }
+                    .buttonStyle(.glassProminent)
+                    .keyboardShortcut(.defaultAction)
+            }
+            .padding(20)
+        }
+        .frame(width: 460, height: 420)
     }
 }
 
@@ -1453,9 +1532,10 @@ struct RichTextField: View {
             }
             toolbarButton("Insert image", systemImage: "photo") { isImageSheetPresented = true }
         }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 3)
-        .background(.quaternary, in: .rect(cornerRadius: 8))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        // Floating Liquid Glass control cluster over the editor content.
+        .glassEffect(.regular.interactive(), in: .capsule)
     }
 
     private var toolbarDivider: some View {
