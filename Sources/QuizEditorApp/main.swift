@@ -42,7 +42,7 @@ struct QuizEditorApp: App {
     var body: some Scene {
         DocumentGroup(newDocument: QuizDocument()) { file in
             ContentView(quiz: file.$document.quiz)
-                .frame(minWidth: 980, minHeight: 680)
+                .frame(minWidth: 1200, idealWidth: 1320, minHeight: 720)
         }
         .windowToolbarStyle(.unified)
         .commands {
@@ -123,7 +123,7 @@ struct ContentView: View {
     @State private var isImporterPresented = false
     @State private var isQTIImporterPresented = false
     @State private var importText = sampleImportText
-    @State private var statusMessage = "Ready"
+    @State private var errorMessage: String?
     @State private var exportDocument = QTIArchiveDocument(data: Data())
     @State private var isExporterPresented = false
     @State private var correctMarkerSymbol = "*"
@@ -239,9 +239,6 @@ struct ContentView: View {
                 .help(isAIPanelVisible ? "Hide the AI Assistant panel (⌥⌘A)" : "Show the AI Assistant panel (⌥⌘A)")
             }
         }
-        .safeAreaInset(edge: .bottom) {
-            StatusBar(message: statusMessage)
-        }
         .onAppear {
             if selectedQuestionID == nil {
                 selectedQuestionID = quiz.questions.first?.id
@@ -270,12 +267,21 @@ struct ContentView: View {
             defaultFilename: defaultExportFilename
         ) { result in
             switch result {
-            case .success(let url): statusMessage = "Exported QTI package to \(url.lastPathComponent)."
-            case .failure(let error): statusMessage = "Export failed: \(error.localizedDescription)"
+            case .success: break
+            case .failure(let error): errorMessage = "Export failed: \(error.localizedDescription)"
             }
         }
         .sheet(isPresented: $isPreviewPresented) {
             QuizPreviewSheet(quiz: quiz, selectedQuestion: selectedQuestionForPreview)
+        }
+        .alert(
+            "Something Went Wrong",
+            isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } }),
+            presenting: errorMessage
+        ) { _ in
+            Button("OK", role: .cancel) { }
+        } message: { message in
+            Text(message)
         }
     }
 
@@ -323,13 +329,11 @@ struct ContentView: View {
         )
         quiz.questions.append(question)
         selectedQuestionID = question.id
-        statusMessage = "Added question."
     }
 
     private func deleteQuestion(at index: Int) {
         quiz.questions.remove(at: index)
         selectedQuestionID = quiz.questions.first?.id
-        statusMessage = "Deleted question."
     }
 
     private func importQTIArchive(_ result: Result<[URL], Error>) {
@@ -344,10 +348,8 @@ struct ContentView: View {
             }
             quiz = try QTIImporter(preserveFormatting: importPreservesFormatting).importQuiz(fromZipAt: url)
             selectedQuestionID = quiz.questions.first?.id
-            let formatNote = importPreservesFormatting ? "" : " (plain text)"
-            statusMessage = "Imported \(questionCount(quiz.questions.count)) from \(url.lastPathComponent)\(formatNote)."
         } catch {
-            statusMessage = "QTI import failed: \(error)"
+            errorMessage = "QTI import failed: \(error.localizedDescription)"
         }
     }
 
@@ -357,9 +359,8 @@ struct ContentView: View {
             quiz = try MarkedTextParser(correctAnswerMarker: marker).parse(text)
             selectedQuestionID = quiz.questions.first?.id
             isImporterPresented = false
-            statusMessage = "Imported \(questionCount(quiz.questions.count)) from marked text."
         } catch {
-            statusMessage = "Import failed: \(error)"
+            errorMessage = "Import failed: \(error.localizedDescription)"
         }
     }
 
@@ -371,30 +372,24 @@ struct ContentView: View {
         do {
             let document = FormattedDocumentBuilder().document(for: quiz)
             try document.write(to: url, atomically: true, encoding: .utf8)
-            statusMessage = "Exported formatted document to \(url.lastPathComponent)."
         } catch {
-            statusMessage = "Document export failed: \(error.localizedDescription)"
+            errorMessage = "Document export failed: \(error.localizedDescription)"
         }
     }
 
     private func prepareExport(engine: CanvasQuizEngine) {
         let altIssues = QuizAccessibilityValidator().imagesMissingAltText(in: quiz)
         guard altIssues.isEmpty else {
-            statusMessage = "Export blocked — add alt text first. \(altIssues.joined(separator: "; "))."
+            errorMessage = "Export blocked — add alt text first. \(altIssues.joined(separator: "; "))."
             return
         }
 
         do {
             exportDocument = try QTIArchiveDocument(quiz: quiz, engine: engine)
             isExporterPresented = true
-            statusMessage = "Preparing \(engine.displayName) export."
         } catch {
-            statusMessage = "Export failed: \(error)"
+            errorMessage = "Export failed: \(error.localizedDescription)"
         }
-    }
-
-    private func questionCount(_ count: Int) -> String {
-        count == 1 ? "1 question" : "\(count) questions"
     }
 
     private func checkSpelling() {
@@ -1643,26 +1638,6 @@ struct QuizPreviewSheet: View {
             FullHTMLPreview(html: html)
         }
         .frame(minWidth: 720, minHeight: 640)
-    }
-}
-
-struct StatusBar: View {
-    let message: String
-
-    var body: some View {
-        HStack {
-            Text(message)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Spacer()
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 6)
-        .background(.bar)
-        // Announce status changes (imports, exports, errors) to VoiceOver.
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Status: \(message)")
-        .accessibilityAddTraits(.updatesFrequently)
     }
 }
 
