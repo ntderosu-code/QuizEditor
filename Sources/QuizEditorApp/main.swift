@@ -133,7 +133,7 @@ struct ContentView: View {
     @State private var isPreviewPresented = false
 
     var body: some View {
-        HSplitView {
+        NavigationSplitView {
             SidebarView(
                 quiz: $quiz,
                 selectedQuestionID: $selectedQuestionID,
@@ -144,15 +144,14 @@ struct ContentView: View {
                     isQTIImporterPresented = true
                 }
             )
-            .frame(minWidth: 300, idealWidth: 320, maxWidth: 360)
-
+            .navigationSplitViewColumnWidth(min: 300, ideal: 320, max: 360)
+        } detail: {
             editorDetail
                 .frame(minWidth: 520)
-
-            if isAIPanelVisible {
-                AIPanel(quiz: quiz)
-                    .frame(minWidth: 380, idealWidth: 420, maxWidth: 540)
-            }
+        }
+        .inspector(isPresented: $isAIPanelVisible) {
+            AIPanel(quiz: quiz)
+                .inspectorColumnWidth(min: 380, ideal: 420, max: 540)
         }
         .toolbar {
             ToolbarItemGroup {
@@ -418,77 +417,57 @@ struct SidebarView: View {
     let onImportMarkedText: () -> Void
     let onImportQTI: (Bool) -> Void
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                VStack(alignment: .leading, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Quiz")
-                            .font(.title2.bold())
-                        Text("Set the title and manage questions.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+        // Standard source-list sidebar: List(selection:) supplies the Liquid Glass
+        // material, focus-aware selection highlight, and keyboard navigation for free.
+        List(selection: $selectedQuestionID) {
+            Section("Quiz Title") {
+                TextField("Quiz title", text: $quiz.title)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityLabel("Quiz title")
+            }
 
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Title")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        TextField("Quiz title", text: $quiz.title)
-                            .textFieldStyle(.roundedBorder)
-                    }
-                }
-
-                Divider()
-
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Questions")
-                            .font(.caption.bold())
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Button(action: onAddQuestion) {
-                            Label("Add", systemImage: "plus")
-                        }
-                        .controlSize(.small)
-                        .help("Add a new question (⌘N)")
-
-                        Menu {
-                            Button("Marked Text…", action: onImportMarkedText)
-                            Divider()
-                            Button("QTI Zip — Keep Formatting…") { onImportQTI(true) }
-                            Button("QTI Zip — Plain Text…") { onImportQTI(false) }
-                        } label: {
-                            Label("Import", systemImage: "square.and.arrow.down")
-                        }
-                        .menuStyle(.borderlessButton)
-                        .fixedSize()
-                        .help("Import questions from marked text or a Canvas QTI zip")
-                    }
-
-                    ForEach(Array(quiz.questions.enumerated()), id: \.element.id) { index, question in
-                        SidebarQuestionRow(
-                            number: index + 1,
-                            question: question,
-                            isSelected: question.id == selectedQuestionID
-                        ) {
-                            selectedQuestionID = question.id
-                        }
-                    }
+            Section("Questions") {
+                ForEach(Array(quiz.questions.enumerated()), id: \.element.id) { index, question in
+                    SidebarQuestionRow(number: index + 1, question: question)
+                        .tag(question.id)
                 }
             }
-            .padding(18)
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(minWidth: 300, idealWidth: 320, maxWidth: 360)
-        .background(.regularMaterial)
+        .listStyle(.sidebar)
+        .navigationTitle("Quiz")
+        .safeAreaInset(edge: .bottom) {
+            HStack(spacing: 10) {
+                Button(action: onAddQuestion) {
+                    Label("Add Question", systemImage: "plus")
+                }
+                .labelStyle(.iconOnly)
+                .help("Add a new question (⇧⌘N)")
+
+                Menu {
+                    Button("Marked Text…", action: onImportMarkedText)
+                    Divider()
+                    Button("QTI Zip — Keep Formatting…") { onImportQTI(true) }
+                    Button("QTI Zip — Plain Text…") { onImportQTI(false) }
+                } label: {
+                    Label("Import", systemImage: "square.and.arrow.down")
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .help("Import questions from marked text or a Canvas QTI zip")
+
+                Spacer()
+            }
+            .buttonStyle(.borderless)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(.bar)
+        }
     }
 }
 
 struct SidebarQuestionRow: View {
     let number: Int
     let question: QuizQuestion
-    let isSelected: Bool
-    let action: () -> Void
 
     private var plainPrompt: String {
         let text = HTMLUtilities().plainText(fromHTML: question.prompt)
@@ -496,30 +475,25 @@ struct SidebarQuestionRow: View {
     }
 
     var body: some View {
-        Button(action: action) {
-            HStack(alignment: .top, spacing: 8) {
-                Text("\(number).")
-                    .font(.body.monospacedDigit())
-                    .foregroundStyle(isSelected ? .white.opacity(0.85) : .secondary)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(plainPrompt)
-                        .font(.body)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                        .foregroundStyle(isSelected ? .white : .primary)
-                    Text(question.type.displayName)
-                        .font(.caption)
-                        .foregroundStyle(isSelected ? .white.opacity(0.85) : .secondary)
-                }
+        // No manual selection coloring: the enclosing List inverts foreground colors
+        // for the selected row automatically, which also adapts to Increase Contrast.
+        HStack(alignment: .top, spacing: 8) {
+            Text("\(number).")
+                .font(.body.monospacedDigit())
+                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(plainPrompt)
+                    .font(.body)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                Text(question.type.displayName)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .background(isSelected ? Color.accentColor : Color.clear)
-            .clipShape(.rect(cornerRadius: 8))
-            .contentShape(.rect)
         }
-        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(.rect)
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel("Question \(number), \(question.type.displayName): \(plainPrompt)")
     }
 }
@@ -714,6 +688,9 @@ struct QuestionReviewSheet: View {
     private enum Field { case prompt, answers, matches, feedback }
     @State private var appliedFields: Set<Field> = []
 
+    // Bullet glyph size scales with Dynamic Type instead of a fixed point size.
+    @ScaledMetric(relativeTo: .callout) private var suggestionBulletSize: CGFloat = 5
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 4) {
@@ -746,7 +723,7 @@ struct QuestionReviewSheet: View {
                                         .fixedSize(horizontal: false, vertical: true)
                                 } icon: {
                                     Image(systemName: "circle.fill")
-                                        .font(.system(size: 5))
+                                        .font(.system(size: suggestionBulletSize))
                                         .foregroundStyle(.secondary)
                                         .accessibilityHidden(true)
                                 }
@@ -1104,7 +1081,6 @@ struct AIPanel: View {
             .padding(.trailing, 32)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .background(Color(nsColor: .controlBackgroundColor))
     }
 
     private var primaryActionTitle: String {
