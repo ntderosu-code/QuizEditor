@@ -629,6 +629,10 @@ struct ContentView: View {
             pendingImport = PendingImport(questions: parsed.questions, importedTitle: parsed.title, source: "marked text")
             isImporterPresented = false
         } catch {
+            // Close the sheet so the error alert (declared under it) can present;
+            // pendingImport stays nil so onDismiss won't open the picker.
+            pendingImport = nil
+            isImporterPresented = false
             errorMessage = "Import failed: \(error.localizedDescription)"
         }
     }
