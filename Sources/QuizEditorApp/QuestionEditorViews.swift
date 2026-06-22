@@ -128,6 +128,8 @@ struct QuestionEditor: View {
                     .help("Delete this question")
                 }
 
+                QuestionReadinessView(readiness: QuestionReadiness(question: question))
+
                 QuestionMetadataEditor(question: $question)
 
                 QuestionLinkingSection(
