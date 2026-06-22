@@ -277,7 +277,7 @@ struct ContentView: View {
                 .help("Add a new question (⇧⌘N)")
             }
 
-            ToolbarSpacer(.fixed)
+            ToolbarSpacer(.flexible)
 
             ToolbarItemGroup {
                 Menu {
@@ -337,7 +337,7 @@ struct ContentView: View {
                 .help("Preview a formatted version of the whole quiz (⇧⌘P)")
             }
 
-            ToolbarSpacer(.fixed)
+            ToolbarSpacer(.flexible)
 
             ToolbarItemGroup {
                 Button {
