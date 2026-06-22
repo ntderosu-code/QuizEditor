@@ -22,19 +22,20 @@ struct QuestionLinkingSection: View {
 
     var body: some View {
         GroupBox {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 10) {
                 objectivesSubsection
-                Divider()
                 sourcesSubsection
-                Divider()
                 competenciesSubsection
-                Divider()
                 stimulusSubsection
 
-                Text("Links help the linter and AI reason about the whole item and power competency-coverage reports. They are author metadata and are not exported.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                // The exported-metadata note is only worth its vertical space once
+                // something is actually linked; an empty section is self-explanatory.
+                if hasAnyLinks {
+                    Text("Links help the linter and AI reason about the whole item and power competency-coverage reports. They are author metadata and are not exported.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(4)
@@ -55,6 +56,50 @@ struct QuestionLinkingSection: View {
         }
     }
 
+    private var hasAnyLinks: Bool {
+        !linkedObjectives.isEmpty || !linkedSources.isEmpty
+            || !linkedCompetencyLabels.isEmpty || attachedStimulus != nil
+    }
+
+    /// Lays out one metadata kind. When nothing is linked it collapses to a single
+    /// line ("Objectives: none linked" followed by the link control), so an empty
+    /// links section no longer pushes the prompt editor down the screen. Once
+    /// content exists it expands to the title row plus chips or a preview card.
+    @ViewBuilder
+    private func metadataSubsection<Control: View, Content: View>(
+        title: String,
+        emptyText: String,
+        isEmpty: Bool,
+        @ViewBuilder control: () -> Control,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        if isEmpty {
+            HStack(spacing: 6) {
+                Text("\(title):")
+                    .font(.subheadline.weight(.semibold))
+                Text(emptyText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("·")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                control()
+                Spacer(minLength: 0)
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                    Spacer()
+                    control()
+                }
+                content()
+            }
+        }
+    }
+
     // MARK: - Competencies
 
     private var linkedCompetencyLabels: [(id: String, label: String)] {
@@ -65,22 +110,21 @@ struct QuestionLinkingSection: View {
     }
 
     private var competenciesSubsection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Competencies")
-                    .font(.subheadline.weight(.semibold))
-                Spacer()
+        metadataSubsection(
+            title: "Competencies",
+            emptyText: "none linked",
+            isEmpty: linkedCompetencyLabels.isEmpty,
+            control: {
                 Button {
                     isPickingCompetencies = true
                 } label: {
-                    Label("Link competency", systemImage: "plus.circle")
+                    Label(linkedCompetencyLabels.isEmpty ? "Add" : "Link competency", systemImage: "plus.circle")
                 }
+                .buttonStyle(.borderless)
+                .font(.caption)
                 .help("Link this question to competency/standard framework nodes")
-            }
-
-            if linkedCompetencyLabels.isEmpty {
-                emptyHint("No competencies linked.")
-            } else {
+            },
+            content: {
                 FlowLayout(spacing: 6) {
                     ForEach(linkedCompetencyLabels, id: \.id) { entry in
                         RemovableChip(
@@ -92,7 +136,7 @@ struct QuestionLinkingSection: View {
                     }
                 }
             }
-        }
+        )
     }
 
     // MARK: - Objectives
@@ -102,11 +146,11 @@ struct QuestionLinkingSection: View {
     }
 
     private var objectivesSubsection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Learning objectives")
-                    .font(.subheadline.weight(.semibold))
-                Spacer()
+        metadataSubsection(
+            title: "Objectives",
+            emptyText: "none linked",
+            isEmpty: linkedObjectives.isEmpty,
+            control: {
                 Menu {
                     ForEach(objectives) { objective in
                         Toggle(isOn: bindingForObjectiveLink(objective.id)) {
@@ -116,16 +160,14 @@ struct QuestionLinkingSection: View {
                     if !objectives.isEmpty { Divider() }
                     Button("New objective…") { editingObjective = LearningObjective() }
                 } label: {
-                    Label("Link objective", systemImage: "plus.circle")
+                    Label(linkedObjectives.isEmpty ? "Add" : "Link objective", systemImage: "plus.circle")
                 }
                 .menuStyle(.borderlessButton)
+                .font(.caption)
                 .fixedSize()
                 .help("Attach a learning objective to this question")
-            }
-
-            if linkedObjectives.isEmpty {
-                emptyHint("No objectives linked.")
-            } else {
+            },
+            content: {
                 FlowLayout(spacing: 6) {
                     ForEach(linkedObjectives) { objective in
                         RemovableChip(
@@ -137,7 +179,7 @@ struct QuestionLinkingSection: View {
                     }
                 }
             }
-        }
+        )
     }
 
     private func objectiveChipText(_ objective: LearningObjective) -> String {
@@ -177,11 +219,11 @@ struct QuestionLinkingSection: View {
     }
 
     private var sourcesSubsection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Sources")
-                    .font(.subheadline.weight(.semibold))
-                Spacer()
+        metadataSubsection(
+            title: "Sources",
+            emptyText: "none linked",
+            isEmpty: linkedSources.isEmpty,
+            control: {
                 Menu {
                     ForEach(sources) { source in
                         Toggle(isOn: bindingForSourceLink(source.id)) {
@@ -191,16 +233,14 @@ struct QuestionLinkingSection: View {
                     if !sources.isEmpty { Divider() }
                     Button("New source…") { editingSource = Source() }
                 } label: {
-                    Label("Link source", systemImage: "plus.circle")
+                    Label(linkedSources.isEmpty ? "Add" : "Link source", systemImage: "plus.circle")
                 }
                 .menuStyle(.borderlessButton)
+                .font(.caption)
                 .fixedSize()
                 .help("Attach a source material to this question")
-            }
-
-            if linkedSources.isEmpty {
-                emptyHint("No sources linked.")
-            } else {
+            },
+            content: {
                 FlowLayout(spacing: 6) {
                     ForEach(linkedSources) { source in
                         RemovableChip(
@@ -212,7 +252,7 @@ struct QuestionLinkingSection: View {
                     }
                 }
             }
-        }
+        )
     }
 
     private func bindingForSourceLink(_ id: String) -> Binding<Bool> {
@@ -247,11 +287,11 @@ struct QuestionLinkingSection: View {
     }
 
     private var stimulusSubsection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Stimulus")
-                    .font(.subheadline.weight(.semibold))
-                Spacer()
+        metadataSubsection(
+            title: "Stimulus",
+            emptyText: "none attached",
+            isEmpty: attachedStimulus == nil,
+            control: {
                 Menu {
                     ForEach(stimuli) { stimulus in
                         Button {
@@ -267,22 +307,22 @@ struct QuestionLinkingSection: View {
                         Button("Detach", role: .destructive) { question.stimulusID = nil }
                     }
                 } label: {
-                    Label(question.stimulusID == nil ? "Attach stimulus" : "Change", systemImage: "plus.circle")
+                    Label(question.stimulusID == nil ? "Attach" : "Change", systemImage: "plus.circle")
                 }
                 .menuStyle(.borderlessButton)
+                .font(.caption)
                 .fixedSize()
                 .help("Attach a shared case, vignette, passage, or figure")
+            },
+            content: {
+                if let stimulus = attachedStimulus {
+                    StimulusPreviewCard(
+                        stimulus: stimulus,
+                        onEdit: { editingStimulus = stimulus }
+                    )
+                }
             }
-
-            if let stimulus = attachedStimulus {
-                StimulusPreviewCard(
-                    stimulus: stimulus,
-                    onEdit: { editingStimulus = stimulus }
-                )
-            } else {
-                emptyHint("No stimulus attached. A stimulus authored here can be reused by other questions.")
-            }
-        }
+        )
     }
 
     private func stimulusMenuLabel(_ stimulus: Stimulus) -> String {
@@ -300,14 +340,6 @@ struct QuestionLinkingSection: View {
         if attachToQuestion { question.stimulusID = stimulus.id }
     }
 
-    // MARK: - Shared
-
-    private func emptyHint(_ text: String) -> some View {
-        Text(text)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-    }
 }
 
 /// A capsule chip with an edit action (the chip body) and a remove button. State
