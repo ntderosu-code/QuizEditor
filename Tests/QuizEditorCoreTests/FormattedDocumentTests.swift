@@ -30,8 +30,9 @@ final class FormattedDocumentTests: XCTestCase {
         XCTAssertTrue(doc.contains("Cell Biology &amp; Cells"))
         // Rich prompt HTML is embedded as-is.
         XCTAssertTrue(doc.contains("<strong>ATP</strong>"))
-        // Correct answer is marked with a checkmark and a textual tag (not color alone).
-        XCTAssertTrue(doc.contains("\u{2713}"))
+        // Correct answer is marked with a textual tag and bold styling (no decorative
+        // checkmark glyph, which screen readers don't announce reliably).
+        XCTAssertFalse(doc.contains("\u{2713}"))
         XCTAssertTrue(doc.contains("(correct)"))
         XCTAssertTrue(doc.contains("Mitochondrion"))
         // Matching renders as a table.

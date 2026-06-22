@@ -53,7 +53,7 @@ public struct FormattedDocumentBuilder: Sendable {
         let items = answers.enumerated().map { index, answer -> String in
             let letter = String(UnicodeScalar(UInt8(65 + (index % 26))))
             if showAnswerKey, answer.isCorrect {
-                return "<li class=\"correct\"><span class=\"marker\">\u{2713}</span><span class=\"letter\">\(letter).</span> \(answer.text) <span class=\"tag\">(correct)</span></li>"
+                return "<li class=\"correct\"><span class=\"marker\"></span><span class=\"letter\">\(letter).</span> \(answer.text) <span class=\"tag\">(correct)</span></li>"
             }
             return "<li><span class=\"marker\"></span><span class=\"letter\">\(letter).</span> \(answer.text)</li>"
         }.joined()

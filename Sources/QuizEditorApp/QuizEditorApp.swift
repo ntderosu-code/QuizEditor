@@ -168,6 +168,9 @@ struct ContentView: View {
     @State var isAIPanelVisible = true
     @State var importPreservesFormatting = true
     @State var isPreviewPresented = false
+    /// When the preview is opened from the question header it starts scoped to the
+    /// current question; the toolbar Preview opens the whole quiz.
+    @State var previewScopedToQuestion = false
     @State var isQuickSwitchPresented = false
     @State var isPaperExamPresented = false
     @State var isBankPresented = false
@@ -285,16 +288,11 @@ struct ContentView: View {
 
             ToolbarSpacer(.fixed)
 
-            ToolbarItemGroup {
-                Button {
-                    isImporterPresented = true
-                } label: {
-                    Label("Import Marked Text", systemImage: "square.and.arrow.down")
-                }
-                .keyboardShortcut("i", modifiers: [.command, .shift])
-                .help("Import questions from marked plain text (⇧⌘I)")
-
+            ToolbarItem {
                 Menu {
+                    Button("Marked Text…") { isImporterPresented = true }
+                        .keyboardShortcut("i", modifiers: [.command, .shift])
+                    Divider()
                     Section("QTI Package (.zip)") {
                         Button("Keep Formatting…") {
                             importPreservesFormatting = true
@@ -305,17 +303,14 @@ struct ContentView: View {
                             isQTIImporterPresented = true
                         }
                     }
-                    Divider()
                     Button("Common Cartridge (.imscc)…") {
                         isIMSCCImporterPresented = true
                     }
                 } label: {
-                    Label("Import Package", systemImage: "doc.zipper")
-                } primaryAction: {
-                    importPreservesFormatting = true
-                    isQTIImporterPresented = true
+                    Label("Import", systemImage: "square.and.arrow.down")
                 }
-                .help("Import a QTI .zip or an IMS Common Cartridge (.imscc) — works with packages from Canvas and other LMSs")
+                .menuIndicator(.hidden)
+                .help("Import questions from marked text, a QTI .zip, or an IMS Common Cartridge (works with Canvas and other LMSs)")
             }
 
             ToolbarSpacer(.fixed)
@@ -343,24 +338,18 @@ struct ContentView: View {
                 .help("Export as a QTI package (for Canvas and other LMSs), a formatted document, or a printable paper exam")
 
                 Button {
+                    previewScopedToQuestion = false
                     isPreviewPresented = true
                 } label: {
                     Label("Preview", systemImage: "eye")
                 }
                 .keyboardShortcut("p", modifiers: [.command, .shift])
-                .help("Preview a formatted version of the quiz (⇧⌘P)")
+                .help("Preview a formatted version of the whole quiz (⇧⌘P)")
             }
 
             ToolbarSpacer(.fixed)
 
             ToolbarItemGroup {
-                Button {
-                    isBankPresented = true
-                } label: {
-                    Label("Question Bank", systemImage: "books.vertical")
-                }
-                .help("Browse and add questions from a folder of saved quizzes")
-
                 Button {
                     isAuthoringPresented = true
                 } label: {
@@ -368,28 +357,12 @@ struct ContentView: View {
                 }
                 .help("Generate new questions from a topic or learning objective")
 
-                Menu {
-                    Button {
-                        isLintSheetPresented = true
-                    } label: {
-                        Label("Item-writing check", systemImage: "checklist")
-                    }
-                    Button {
-                        isCoverageSheetPresented = true
-                    } label: {
-                        Label("Competency coverage…", systemImage: "chart.bar.doc.horizontal")
-                    }
-                    Divider()
-                    Button {
-                        isFrameworkSheetPresented = true
-                    } label: {
-                        Label("Manage frameworks…", systemImage: "list.bullet.indent")
-                    }
+                Button {
+                    isLintSheetPresented = true
                 } label: {
                     Label("Quality Check", systemImage: "checklist")
                 }
-                .menuIndicator(.hidden)
-                .help("Run the offline item-writing linter, view competency coverage, or manage frameworks")
+                .help("Check the whole quiz for item-writing issues: clarity, answer keys, accessibility, and LMS import readiness")
 
                 Menu {
                     Picker("Persona", selection: $quiz.personaID) {
@@ -477,7 +450,7 @@ struct ContentView: View {
             }
         }
         .sheet(isPresented: $isPreviewPresented) {
-            QuizPreviewSheet(quiz: quiz, selectedQuestion: selectedQuestionForPreview)
+            QuizPreviewSheet(quiz: quiz, selectedQuestion: selectedQuestionForPreview, startScopedToQuestion: previewScopedToQuestion)
         }
         .sheet(isPresented: $isQuickSwitchPresented) {
             QuickSwitchSheet(quiz: quiz) { id in selectedQuestionID = id }
@@ -658,6 +631,8 @@ struct MarkedTextFormatReference: View {
 struct QuizPreviewSheet: View {
     let quiz: Quiz
     let selectedQuestion: (number: Int, question: QuizQuestion)?
+    /// Opened from the question header → start on this question; from the toolbar → whole quiz.
+    var startScopedToQuestion: Bool = false
     @Environment(\.dismiss) private var dismiss
 
     private enum Scope: Hashable { case fullQuiz, question }
@@ -713,6 +688,11 @@ struct QuizPreviewSheet: View {
             FullHTMLPreview(html: html)
         }
         .frame(minWidth: 720, minHeight: 640)
+        .onAppear {
+            if startScopedToQuestion, selectedQuestion != nil {
+                scope = .question
+            }
+        }
     }
 }
 

@@ -22,7 +22,10 @@ extension ContentView {
                 stimuli: $quiz.stimuli,
                 frameworks: frameworkStore.frameworks,
                 persona: activePersona,
-                onPreview: { isPreviewPresented = true }
+                onPreview: {
+                    previewScopedToQuestion = true
+                    isPreviewPresented = true
+                }
             ) {
                 deleteQuestion(id: quiz.questions[selectedIndex].id)
             }

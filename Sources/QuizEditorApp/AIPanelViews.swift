@@ -73,7 +73,7 @@ struct AIPanel: View {
                         .foregroundStyle(status.isError ? .orange : .secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                Label(resultsHint, systemImage: "rectangle.portrait.and.arrow.right")
+                Label(resultsHint, systemImage: "info.circle")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -167,7 +167,7 @@ struct AIPanel: View {
     private var quizToolsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             sectionHeader("Whole quiz")
-            toolButton("Review Quiz", systemImage: "sparkles", id: quizActionID(.review), prominent: true) {
+            toolButton("Review Quiz", systemImage: "sparkles", id: quizActionID(.review)) {
                 runQuizFeature(.review)
             }
             toolButton("Suggest Revisions", systemImage: "pencil.and.outline", id: quizActionID(.revise)) {

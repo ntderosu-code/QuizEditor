@@ -203,43 +203,38 @@ struct SidebarView: View {
     }
 
     private var bottomBar: some View {
-        // A divider plus a toolbar material set the bar apart from the scrolling
-        // question list; without them the borderless icons disappear against
-        // loaded content. Bordered buttons give each control visible chrome.
-        VStack(spacing: 0) {
-            Divider()
-            HStack(spacing: 8) {
-                Button(action: onAddQuestion) {
-                    Label("Add Question", systemImage: "plus")
-                }
-                .labelStyle(.iconOnly)
-                .help("Add a new question (⇧⌘N)")
-
-                // Icon-only menu with no fixed width so the bar reflows at any
-                // sidebar width instead of being clipped.
-                Menu {
-                    Button("Marked Text…", action: onImportMarkedText)
-                    Button("QTI Zip — Keep Formatting…") { onImportQTI(true) }
-                    Button("QTI Zip — Plain Text…") { onImportQTI(false) }
-                    Button("Common Cartridge (.imscc)…", action: onImportCommonCartridge)
-                    Divider()
-                    Button("Merge from File…", action: onMergeFromFile)
-                    Button("Question Bank…", action: onOpenBank)
-                } label: {
-                    Label("Add Content", systemImage: "tray.and.arrow.down")
-                }
-                .menuStyle(.button)
-                .labelStyle(.iconOnly)
-                .fixedSize()
-                .help("Import, merge, or add questions from the bank")
-
-                Spacer(minLength: 0)
+        // Liquid Glass buttons: visible on their own (each has its own glass
+        // backing), so no separating panel is needed.
+        HStack(spacing: 8) {
+            Button(action: onAddQuestion) {
+                Label("Add Question", systemImage: "plus")
             }
-            .buttonStyle(.bordered)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .labelStyle(.iconOnly)
+            .help("Add a new question (⇧⌘N)")
+
+            // Icon-only menu with no fixed width so the bar reflows at any
+            // sidebar width instead of being clipped.
+            Menu {
+                Button("Marked Text…", action: onImportMarkedText)
+                Button("QTI Zip — Keep Formatting…") { onImportQTI(true) }
+                Button("QTI Zip — Plain Text…") { onImportQTI(false) }
+                Button("Common Cartridge (.imscc)…", action: onImportCommonCartridge)
+                Divider()
+                Button("Merge from File…", action: onMergeFromFile)
+                Button("Question Bank…", action: onOpenBank)
+            } label: {
+                Label("Add Content", systemImage: "tray.and.arrow.down")
+            }
+            .menuStyle(.button)
+            .labelStyle(.iconOnly)
+            .fixedSize()
+            .help("Import, merge, or add questions from the bank")
+
+            Spacer(minLength: 0)
         }
-        .background(.bar)
+        .buttonStyle(.glass)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
     }
 }
 
@@ -282,15 +277,15 @@ struct SidebarQuestionRow: View {
                             .background(Color.secondary.opacity(0.15))
                             .clipShape(.capsule)
                     }
-                    // Surface only the questions that still need attention; a ready
-                    // question stays uncluttered.
-                    if status != .ready {
-                        ReadinessBadge(status: status)
-                    }
                 }
             }
             Spacer(minLength: 0)
-            LintBadge(findings: findings)
+            // A single readiness dot: filled when the question is ready, hollow when
+            // it still needs work. The status is also in the row's accessibility label.
+            Image(systemName: status == .ready ? "circle.fill" : "circle")
+                .font(.caption)
+                .foregroundStyle(status == .ready ? Color.accentColor : Color.secondary.opacity(0.5))
+                .accessibilityHidden(true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(.rect)

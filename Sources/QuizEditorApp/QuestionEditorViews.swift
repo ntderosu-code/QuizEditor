@@ -74,7 +74,12 @@ struct QuestionEditor: View {
             Divider()
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    QuestionReadinessView(readiness: QuestionReadiness(question: question))
+                    // Only when something is unmet — when the question is ready the
+                    // header badge already says so, so the panel would be redundant.
+                    let readiness = QuestionReadiness(question: question)
+                    if readiness.status != .ready {
+                        QuestionReadinessView(readiness: readiness)
+                    }
 
                     QuestionMetadataEditor(question: $question)
 
@@ -88,7 +93,7 @@ struct QuestionEditor: View {
 
                 LintFindingsSection(findings: findings)
 
-                RichTextField(title: "Question stem", text: $question.prompt, minHeight: 200)
+                RichTextField(title: "Question stem", text: $question.prompt, minHeight: 96)
 
                 if question.type == .matching {
                     MatchingEditor(matches: $question.matches)
@@ -141,7 +146,9 @@ struct QuestionEditor: View {
             Button(action: onPreview) {
                 Label("Preview", systemImage: "eye")
             }
+            .buttonStyle(.borderless)
             .labelStyle(.iconOnly)
+            .imageScale(.large)
             .help("Preview this question (⇧⌘P)")
 
             Button {
@@ -173,10 +180,12 @@ struct QuestionEditor: View {
                 Divider()
                 Button("Delete Question", role: .destructive, action: onDelete)
             } label: {
-                Label("More actions", systemImage: "ellipsis.circle")
+                Label("More actions", systemImage: "ellipsis")
             }
             .menuIndicator(.hidden)
+            .buttonStyle(.borderless)
             .labelStyle(.iconOnly)
+            .imageScale(.large)
             .fixedSize()
             .help("Generate distractors or feedback, undo AI edits, or delete this question")
         }
@@ -217,7 +226,7 @@ struct QuestionEditor: View {
                 .disabled(isGenerating)
                 .help("Draft feedback for this question with AI")
             }
-            RichTextField(title: "Feedback", text: $question.feedback, minHeight: 140, showsTitle: false)
+            RichTextField(title: "Feedback", text: $question.feedback, minHeight: 90, showsTitle: false)
         }
     }
 
@@ -397,10 +406,6 @@ struct QuestionReviewSheet: View {
 struct AnswerEditor: View {
     @Binding var question: QuizQuestion
 
-    /// Leading column width so the label, selector, and text fields line up and the
-    /// misconception note indents under the text field.
-    private let gutter: CGFloat = 58
-
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
@@ -433,41 +438,27 @@ struct AnswerEditor: View {
     private func answerRow(_ answer: Binding<QuizAnswer>) -> some View {
         let index = question.answers.firstIndex { $0.id == answer.wrappedValue.id } ?? 0
         let letter = Self.answerLetter(index)
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text(letter)
-                    .font(.callout.weight(.semibold).monospaced())
-                    .frame(width: 18, alignment: .leading)
-                    .accessibilityHidden(true)
+        // One line per answer, with a fixed layout, so marking an answer correct
+        // never adds or removes a row and the choices never reflow.
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(letter)
+                .font(.callout.weight(.semibold).monospaced())
+                .frame(width: 18, alignment: .leading)
+                .accessibilityHidden(true)
 
-                correctSelector(for: answer.wrappedValue.id, letter: letter, isCorrect: answer.wrappedValue.isCorrect)
+            correctSelector(for: answer.wrappedValue.id, letter: letter, isCorrect: answer.wrappedValue.isCorrect)
 
-                TextField("Answer text", text: answer.text)
-                    .textFieldStyle(.roundedBorder)
-                    .accessibilityLabel("Answer \(letter) text")
+            TextField("Answer text", text: answer.text)
+                .textFieldStyle(.roundedBorder)
+                .accessibilityLabel("Answer \(letter) text")
 
-                Button(role: .destructive) {
-                    question.answers.removeAll { $0.id == answer.wrappedValue.id }
-                } label: {
-                    Image(systemName: "minus.circle")
-                }
-                .buttonStyle(.borderless)
-                .accessibilityLabel("Remove answer \(letter)")
+            Button(role: .destructive) {
+                question.answers.removeAll { $0.id == answer.wrappedValue.id }
+            } label: {
+                Image(systemName: "minus.circle")
             }
-
-            // A distractor can name the misconception it targets (#25 / Phase 3).
-            if showsMisconception, !answer.wrappedValue.isCorrect {
-                HStack(spacing: 8) {
-                    Spacer().frame(width: gutter)
-                    Image(systemName: "lightbulb")
-                        .foregroundStyle(.secondary)
-                        .accessibilityHidden(true)
-                    TextField("Misconception this distractor targets (optional)", text: misconceptionBinding(for: answer.wrappedValue.id))
-                        .textFieldStyle(.roundedBorder)
-                        .font(.caption)
-                        .accessibilityLabel("Answer \(letter) misconception note")
-                }
-            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel("Remove answer \(letter)")
         }
     }
 
@@ -534,22 +525,6 @@ struct AnswerEditor: View {
 
     private var usesSingleCorrectAnswer: Bool {
         question.type == .multipleChoice || question.type == .trueFalse
-    }
-
-    /// Misconception tags apply to selectable distractors only.
-    private var showsMisconception: Bool {
-        question.type == .multipleChoice || question.type == .multipleAnswer
-    }
-
-    private func misconceptionBinding(for answerID: UUID) -> Binding<String> {
-        Binding(
-            get: { question.answers.first(where: { $0.id == answerID })?.misconceptionTag ?? "" },
-            set: { newValue in
-                guard let index = question.answers.firstIndex(where: { $0.id == answerID }) else { return }
-                let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
-                question.answers[index].misconceptionTag = trimmed.isEmpty ? nil : newValue
-            }
-        )
     }
 
     private func correctBinding(for answerID: UUID) -> Binding<Bool> {
