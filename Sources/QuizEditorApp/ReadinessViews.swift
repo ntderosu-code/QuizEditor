@@ -40,34 +40,20 @@ struct QuestionReadinessView: View {
     let readiness: QuestionReadiness
 
     var body: some View {
-        let unmet = readiness.unmet
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                ReadinessBadge(status: readiness.status)
-                Text(unmet.isEmpty
-                     ? "All readiness checks pass."
-                     : "\(unmet.count) item\(unmet.count == 1 ? "" : "s") to finish before this question is ready.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 0)
-            }
-
-            if !unmet.isEmpty {
-                VStack(alignment: .leading, spacing: 5) {
-                    ForEach(unmet) { check in
-                        Label {
-                            Text(check.message)
-                                .font(.caption)
-                                .fixedSize(horizontal: false, vertical: true)
-                        } icon: {
-                            Image(systemName: icon(for: check.severity))
-                                .foregroundStyle(tint(for: check.severity))
-                                .accessibilityHidden(true)
-                        }
-                        .accessibilityLabel("\(check.title), \(severityWord(check.severity)): \(check.message)")
-                    }
+        // Just the actionable items. The status word ("Needs work") already lives
+        // in the header badge, so it isn't repeated here.
+        VStack(alignment: .leading, spacing: 5) {
+            ForEach(readiness.unmet) { check in
+                Label {
+                    Text(check.message)
+                        .font(.caption)
+                        .fixedSize(horizontal: false, vertical: true)
+                } icon: {
+                    Image(systemName: icon(for: check.severity))
+                        .foregroundStyle(tint(for: check.severity))
+                        .accessibilityHidden(true)
                 }
+                .accessibilityLabel("\(check.title), \(severityWord(check.severity)): \(check.message)")
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
