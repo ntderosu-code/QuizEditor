@@ -465,7 +465,7 @@ struct ContentView: View {
             QuizLintSheet(quiz: quiz, persona: activePersona) { id in selectedQuestionID = id }
         }
         .sheet(isPresented: $isPersonaSheetPresented) {
-            PersonaManagementSheet(personas: personaStore.personas, quizPersonaID: $quiz.personaID)
+            PersonaManagementSheet(store: personaStore, quizPersonaID: $quiz.personaID)
         }
         .sheet(item: $importPickerContext) { context in
             ImportPickerSheet(
