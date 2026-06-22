@@ -33,8 +33,9 @@ struct AIPanel: View {
     @State private var runningAction: String?
     @State private var isConfigPresented = false
     @State private var aiResult: AIResultContext?
-    /// Drives the paginated, applyable whole-quiz review sheet.
-    @State private var isQuizReviewPresented = false
+    /// Drives the paginated, applyable whole-quiz sheet. The mode picks which
+    /// tool ran (review, revisions, or feedback) and the loader/focus to use.
+    @State private var quizReviewMode: QuizReviewMode?
     /// A parsed item review, shown in the formatted diff sheet with per-field Apply.
     @State private var reviewPresentation: ReviewPresentation?
     /// The selected question as it was when its review started — the diff "before".
@@ -42,6 +43,15 @@ struct AIPanel: View {
     @State private var status: PanelStatus?
 
     private var isRunning: Bool { runningAction != nil }
+
+    /// Footer hint describing where AI results land. With an auto-run provider the
+    /// tools open a sheet where each edit is applied to the quiz; copy-paste opens
+    /// a window to read and paste a response back.
+    private var resultsHint: String {
+        provider == .copyPaste
+            ? "Copy a prompt, run it in your assistant, then paste the response back here."
+            : "AI suggestions open in a sheet where you apply each edit to the quiz."
+    }
 
     private var runner: ConfiguredAIRunner {
         ConfiguredAIRunner(provider: provider, apiKey: apiKey, endpoint: endpoint, model: model)
@@ -63,7 +73,7 @@ struct AIPanel: View {
                         .foregroundStyle(status.isError ? .orange : .secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                Label("Results open in a window you can read, copy, or save.", systemImage: "rectangle.portrait.and.arrow.right")
+                Label(resultsHint, systemImage: "rectangle.portrait.and.arrow.right")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -86,8 +96,14 @@ struct AIPanel: View {
                 }
             }
         }
-        .sheet(isPresented: $isQuizReviewPresented) {
-            QuizReviewSheet(quizTitle: quizTitle, questions: $quiz.questions, loadBatch: makeReviewBatchLoader())
+        .sheet(item: $quizReviewMode) { mode in
+            QuizReviewSheet(
+                quizTitle: quizTitle,
+                questions: $quiz.questions,
+                loadBatch: mode == .feedback ? makeFeedbackBatchLoader() : makeReviewBatchLoader(),
+                title: mode.title,
+                focus: mode.focus
+            )
         }
     }
 
@@ -239,20 +255,19 @@ struct AIPanel: View {
     private func quizActionID(_ feature: AIFeature) -> String { "quiz-\(feature.rawValue)" }
 
     private func runQuizFeature(_ feature: AIFeature) {
-        // The whole-quiz review uses the paginated, applyable sheet for the
-        // auto-run providers; copy-paste still copies a single prompt.
-        if feature == .review, provider != .copyPaste {
+        // Review, Suggest Revisions, and Draft Feedback all open the paginated,
+        // applyable sheet for the auto-run providers, so every quiz-level tool
+        // writes its result back into the quiz. Copy-paste still copies a prompt.
+        if let mode = QuizReviewMode(feature: feature) {
+            if provider == .copyPaste {
+                copyQuizPrompt(feature)
+                return
+            }
             if provider == .openAICompatible, URL(string: endpoint) == nil {
                 status = PanelStatus(text: "Enter a valid endpoint URL.", isError: true)
                 return
             }
-            isQuizReviewPresented = true
-            return
-        }
-        switch provider {
-        case .openAICompatible: runQuizAPI(feature)
-        case .copyPaste: copyQuizPrompt(feature)
-        case .foundationModels: runFoundationModelsQuiz(feature)
+            quizReviewMode = mode
         }
     }
 
@@ -280,29 +295,30 @@ struct AIPanel: View {
         }
     }
 
-    private func runQuizAPI(_ feature: AIFeature) {
-        guard let endpointURL = URL(string: endpoint) else {
-            status = PanelStatus(text: "Enter a valid endpoint URL.", isError: true)
-            return
-        }
-        runningAction = quizActionID(feature)
-        status = nil
-        let configuration = AIConfiguration(apiKey: apiKey, endpoint: endpointURL, model: model)
-        let instruction = self.instruction
+    /// Builds the per-page loader for the Draft Feedback tool. Each question on a
+    /// page is given freshly drafted feedback (sequentially, so the on-device model
+    /// handles one request at a time); the result is shown as a per-question diff
+    /// with Apply, reusing the same sheet as Review Quiz.
+    private func makeFeedbackBatchLoader() -> ([QuizQuestion]) async throws -> [QuestionReview] {
+        let service = QuestionAuthoringService()
+        let runner = self.runner
+        let quizTitle = self.quizTitle
+        let persona = self.persona
         let quiz = self.quiz
-        Task {
-            do {
-                let result = try await AIClient().run(feature: feature, quiz: quiz, instruction: instruction, configuration: configuration)
-                await MainActor.run {
-                    runningAction = nil
-                    presentResult(result, title: feature.displayName)
-                }
-            } catch {
-                await MainActor.run {
-                    runningAction = nil
-                    status = PanelStatus(text: "AI request failed: \(error)", isError: true)
-                }
+        let frameworks = self.frameworks
+        let system = service.systemInstruction(persona: persona)
+        let temperature = persona.aiProfile.temperatureOverride ?? 0.4
+        return { questions in
+            var results: [QuestionReview] = []
+            for question in questions {
+                let context = quiz.promptLinkContext(for: question, frameworks: frameworks)
+                let prompt = service.makeFeedbackPrompt(question: question, quizTitle: quizTitle, persona: persona, linkedContext: context)
+                let raw = try await runner.runFeedback(system: system, user: prompt, temperature: temperature)
+                let drafted = service.parseFeedback(raw)
+                let changed = (drafted?.isEmpty == false && drafted != question.feedback) ? drafted : nil
+                results.append(QuestionReview(summary: "Drafted feedback.", revisedFeedback: changed))
             }
+            return results
         }
     }
 
@@ -320,43 +336,6 @@ struct AIPanel: View {
             return
         }
         presentResult(pasted, title: "AI Response")
-    }
-
-    /// Runs a quiz-level feature on Apple's on-device model, paging the quiz into
-    /// batches that fit the token limit and stitching the replies into one document.
-    private func runFoundationModelsQuiz(_ feature: AIFeature) {
-        runningAction = quizActionID(feature)
-        status = nil
-        let batches = quiz.batched(maxCharacters: FoundationModelsRunner.inputCharacterBudget)
-        let instruction = self.instruction
-        Task {
-            var sections: [String] = []
-            var startNumber = 1
-            for (index, batch) in batches.enumerated() {
-                if batches.count > 1 {
-                    await MainActor.run {
-                        status = PanelStatus(text: "Processing batch \(index + 1) of \(batches.count)\u{2026}", isError: false)
-                    }
-                }
-                let prompt = AIPromptBuilder().makePrompt(feature: feature, quiz: batch, userInstruction: instruction)
-                let reply = await FoundationModelsRunner.run(prompt: prompt)
-                let endNumber = startNumber + batch.questions.count - 1
-                if batches.count > 1 {
-                    sections.append("## Questions \(startNumber)\u{2013}\(endNumber)\n\n\(reply)")
-                } else {
-                    sections.append(reply)
-                }
-                startNumber = endNumber + 1
-            }
-            let combined = sections.joined(separator: "\n\n")
-            await MainActor.run {
-                runningAction = nil
-                status = batches.count > 1
-                    ? PanelStatus(text: "Combined \(batches.count) batches into one document.", isError: false)
-                    : nil
-                presentResult(combined, title: feature.displayName)
-            }
-        }
     }
 
     // MARK: - Item-level actions
@@ -529,30 +508,36 @@ struct AISettingsSheet: View {
 }
 
 
-enum FoundationModelsRunner {
-    /// Apple Foundation Models cap a request at roughly 4096 tokens shared between
-    /// the prompt and the reply. Estimating about four characters per token, this
-    /// budget keeps a batch of quiz text near 1000 tokens so there is ample room
-    /// left for the model's response. Quiz-level tools page the quiz into batches
-    /// of this size; see `Quiz.batched(maxCharacters:)`.
-    static let inputCharacterBudget = 4000
+/// Which quiz-level AI tool opened the paginated, applyable sheet, and how that
+/// sheet should present and load each question.
+enum QuizReviewMode: String, Identifiable {
+    case review, revisions, feedback
 
-    static func run(prompt: String) async -> String {
-        #if canImport(FoundationModels)
-        if #available(macOS 26.0, *) {
-            let model = SystemLanguageModel.default
-            guard model.isAvailable else {
-                return "Apple Foundation Models is not available on this Mac. Enable Apple Intelligence on a supported Mac, or use the Copy/Paste provider."
-            }
-            do {
-                let session = LanguageModelSession(model: model, instructions: "You are a concise quiz review assistant.")
-                let response = try await session.respond(to: prompt)
-                return response.content
-            } catch {
-                return "Foundation Models request failed: \(error)"
-            }
+    var id: String { rawValue }
+
+    init?(feature: AIFeature) {
+        switch feature {
+        case .review: self = .review
+        case .revise: self = .revisions
+        case .generateFeedback: self = .feedback
+        case .author: return nil
         }
-        #endif
-        return "Apple Foundation Models requires a FoundationModels-capable macOS SDK/runtime. Use the Copy/Paste provider or an OpenAI-compatible API on this Mac."
+    }
+
+    var title: String {
+        switch self {
+        case .review: "Quiz Review"
+        case .revisions: "Suggested Revisions"
+        case .feedback: "Drafted Feedback"
+        }
+    }
+
+    var focus: ReviewFocus {
+        switch self {
+        case .review: .full
+        case .revisions: .revisions
+        case .feedback: .feedback
+        }
     }
 }
+

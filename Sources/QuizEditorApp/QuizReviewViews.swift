@@ -4,12 +4,19 @@ import QuizEditorCore
 /// The body of a single question's AI review: summary, suggestions, and per-field
 /// before/after diffs with Apply. Extracted so both the single-question review
 /// sheet and the paginated whole-quiz review render reviews the same way.
+/// What a reviewed question emphasizes. Quiz-level tools reuse this one view:
+/// full review shows the assessment plus every edit; revisions and feedback hide
+/// the prose assessment and surface just the edits to apply.
+enum ReviewFocus { case full, revisions, feedback }
+
 struct QuestionReviewDetail: View {
     let review: QuestionReview
     /// The question as it was when reviewed — the "before" side of each diff.
     let original: QuizQuestion
     /// Optional heading (e.g. "Question 3") shown above the summary.
     var heading: String? = nil
+    /// Which parts of the review to show. Defaults to the full review.
+    var focus: ReviewFocus = .full
     /// Applies a mutation to the question this review belongs to. Last parameter
     /// so callers can pass it as a trailing closure.
     let onApply: (@escaping (inout QuizQuestion) -> Void) -> Void
@@ -18,6 +25,9 @@ struct QuestionReviewDetail: View {
     @State private var appliedFields: Set<Field> = []
     @ScaledMetric(relativeTo: .callout) private var suggestionBulletSize: CGFloat = 5
 
+    /// The assessment prose (summary + suggestions) only appears in a full review.
+    private var showsAssessment: Bool { focus == .full }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             if let heading {
@@ -25,11 +35,13 @@ struct QuestionReviewDetail: View {
                     .font(.headline)
             }
 
-            Text(review.summary)
-                .font(.callout)
-                .fixedSize(horizontal: false, vertical: true)
+            if showsAssessment {
+                Text(review.summary)
+                    .font(.callout)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
-            if !review.suggestions.isEmpty {
+            if showsAssessment, !review.suggestions.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("What to improve")
                         .font(.caption.bold())
@@ -81,7 +93,7 @@ struct QuestionReviewDetail: View {
                     }
                 }
             } else {
-                Label("No rewrites suggested — this question already reads well.", systemImage: "checkmark.seal")
+                Label(emptyStateText, systemImage: "checkmark.seal")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -138,6 +150,14 @@ struct QuestionReviewDetail: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(tag): \(text)")
+    }
+
+    private var emptyStateText: String {
+        switch focus {
+        case .feedback: "Feedback already looks complete for this question."
+        case .revisions: "No rewrites suggested — this question already reads well."
+        case .full: "No rewrites suggested — this question already reads well."
+        }
     }
 
     private var appliesToAnswers: Bool {
@@ -201,6 +221,10 @@ struct QuizReviewSheet: View {
     /// Reviews one page of questions in a single request. Provider-specific and
     /// injected by the caller so this sheet stays provider-agnostic.
     let loadBatch: ([QuizQuestion]) async throws -> [QuestionReview]
+    /// Window title for this run (Review Quiz, Suggested Revisions, Drafted Feedback).
+    var title: String = "Quiz Review"
+    /// Which parts of each question's result to show; passed through to the detail.
+    var focus: ReviewFocus = .full
 
     @Environment(\.dismiss) private var dismiss
 
@@ -241,7 +265,7 @@ struct QuizReviewSheet: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Label("Quiz Review", systemImage: "sparkles")
+            Label(title, systemImage: "sparkles")
                 .font(.title2.bold())
             Text(readinessSummary)
                 .font(.callout)
@@ -267,7 +291,15 @@ struct QuizReviewSheet: View {
         let needEdits = loadedItems.filter { $0.review.hasRevisions }.count
         let clean = reviewed - needEdits
         let scope = reviewed == total ? "all \(total)" : "\(reviewed) of \(total)"
-        return "Reviewed \(scope) question\(total == 1 ? "" : "s") — \(needEdits) with suggested edits, \(clean) look clean."
+        let plural = total == 1 ? "" : "s"
+        switch focus {
+        case .feedback:
+            return "Drafted feedback for \(scope) question\(plural) — \(needEdits) ready to apply, \(clean) already complete."
+        case .revisions:
+            return "Suggested revisions for \(scope) question\(plural) — \(needEdits) with edits to apply, \(clean) look clean."
+        case .full:
+            return "Reviewed \(scope) question\(plural) — \(needEdits) with suggested edits, \(clean) look clean."
+        }
     }
 
     // MARK: - Content (current page)
@@ -307,7 +339,8 @@ struct QuizReviewSheet: View {
                             QuestionReviewDetail(
                                 review: item.review,
                                 original: item.original,
-                                heading: "Question \(item.globalIndex + 1)"
+                                heading: "Question \(item.globalIndex + 1)",
+                                focus: focus
                             ) { mutate in
                                 guard questions.indices.contains(item.globalIndex) else { return }
                                 mutate(&questions[item.globalIndex])
