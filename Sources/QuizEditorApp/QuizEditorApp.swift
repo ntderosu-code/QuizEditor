@@ -250,7 +250,7 @@ struct ContentView: View {
         }
         .inspector(isPresented: $isAIPanelVisible) {
             AIPanel(
-                quiz: quiz,
+                quiz: $quiz,
                 quizTitle: quiz.title,
                 selectedQuestion: selectedQuestionBinding,
                 selectedQuestionNumber: selectedQuestionNumber,
@@ -1508,12 +1508,6 @@ struct QuestionReviewSheet: View {
 
     @Environment(\.dismiss) private var dismiss
 
-    private enum Field { case prompt, answers, matches, feedback }
-    @State private var appliedFields: Set<Field> = []
-
-    // Bullet glyph size scales with Dynamic Type instead of a fixed point size.
-    @ScaledMetric(relativeTo: .callout) private var suggestionBulletSize: CGFloat = 5
-
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 4) {
@@ -1529,75 +1523,13 @@ struct QuestionReviewSheet: View {
             Divider()
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    Text(review.summary)
-                        .font(.callout)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    if !review.suggestions.isEmpty {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("What to improve")
-                                .font(.caption.bold())
-                                .foregroundStyle(.secondary)
-                            ForEach(Array(review.suggestions.enumerated()), id: \.offset) { _, suggestion in
-                                Label {
-                                    Text(suggestion)
-                                        .font(.callout)
-                                        .fixedSize(horizontal: false, vertical: true)
-                                } icon: {
-                                    Image(systemName: "circle.fill")
-                                        .font(.system(size: suggestionBulletSize))
-                                        .foregroundStyle(.secondary)
-                                        .accessibilityHidden(true)
-                                }
-                            }
-                        }
-                    }
-
-                    if review.hasRevisions {
-                        Divider()
-                        Text("Suggested edits")
-                            .font(.caption.bold())
-                            .foregroundStyle(.secondary)
-
-                        if let revisedPrompt = review.revisedPrompt {
-                            diffRow(title: "Prompt", before: original.prompt, after: revisedPrompt, field: .prompt) {
-                                $0.prompt = revisedPrompt
-                            }
-                        }
-                        if appliesToAnswers, let revisedAnswers = review.revisedAnswers {
-                            diffRow(title: "Answers", before: answersText(original.answers), after: answersText(revisedAnswers), field: .answers) {
-                                $0.answers = revisedAnswers
-                            }
-                        }
-                        if original.type == .matching, let revisedMatches = review.revisedMatches {
-                            diffRow(title: "Matching pairs", before: matchesText(original.matches), after: matchesText(revisedMatches), field: .matches) {
-                                $0.matches = revisedMatches
-                            }
-                        }
-                        if let revisedFeedback = review.revisedFeedback {
-                            diffRow(title: "Feedback", before: original.feedback.isEmpty ? "(none)" : original.feedback, after: revisedFeedback, field: .feedback) {
-                                $0.feedback = revisedFeedback
-                            }
-                        }
-                    } else {
-                        Label("No rewrites suggested — this question already reads well.", systemImage: "checkmark.seal")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .padding(24)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                QuestionReviewDetail(review: review, original: original, onApply: onApply)
+                    .padding(24)
             }
 
             Divider()
 
             HStack {
-                if review.hasRevisions {
-                    Button("Apply All", action: applyAll)
-                        .buttonStyle(.borderedProminent)
-                        .disabled(applicableFields.isSubset(of: appliedFields))
-                }
                 Spacer()
                 Button("Done") { dismiss() }
                     .keyboardShortcut(.defaultAction)
@@ -1605,97 +1537,6 @@ struct QuestionReviewSheet: View {
             .padding(24)
         }
         .frame(minWidth: 620, minHeight: 540)
-    }
-
-    @ViewBuilder
-    private func diffRow(title: String, before: String, after: String, field: Field, apply: @escaping (inout QuizQuestion) -> Void) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(title)
-                    .font(.subheadline.weight(.semibold))
-                Spacer()
-                if appliedFields.contains(field) {
-                    Label("Applied", systemImage: "checkmark.circle.fill")
-                        .font(.caption)
-                        .foregroundStyle(.green)
-                } else {
-                    Button("Apply") {
-                        onApply(apply)
-                        appliedFields.insert(field)
-                    }
-                    .help("Replace the current \(title.lowercased()) with this rewrite")
-                }
-            }
-
-            diffBlock(tag: "Before", text: before, tint: .red)
-            diffBlock(tag: "After", text: after, tint: .green)
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(nsColor: .controlBackgroundColor))
-        .clipShape(.rect(cornerRadius: 10))
-    }
-
-    @ViewBuilder
-    private func diffBlock(tag: String, text: String, tint: Color) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(tag.uppercased())
-                .font(.caption2.bold())
-                .foregroundStyle(.secondary)
-            Text(text)
-                .font(.callout)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(8)
-                .background(tint.opacity(0.12))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(tint.opacity(0.35))
-                )
-                .clipShape(.rect(cornerRadius: 6))
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(tag): \(text)")
-    }
-
-    private var appliesToAnswers: Bool {
-        original.type != .essay && original.type != .matching
-    }
-
-    private var applicableFields: Set<Field> {
-        var fields: Set<Field> = []
-        if review.revisedPrompt != nil { fields.insert(.prompt) }
-        if appliesToAnswers, review.revisedAnswers != nil { fields.insert(.answers) }
-        if original.type == .matching, review.revisedMatches != nil { fields.insert(.matches) }
-        if review.revisedFeedback != nil { fields.insert(.feedback) }
-        return fields
-    }
-
-    private func applyAll() {
-        if let revisedPrompt = review.revisedPrompt, !appliedFields.contains(.prompt) {
-            onApply { $0.prompt = revisedPrompt }
-            appliedFields.insert(.prompt)
-        }
-        if appliesToAnswers, let revisedAnswers = review.revisedAnswers, !appliedFields.contains(.answers) {
-            onApply { $0.answers = revisedAnswers }
-            appliedFields.insert(.answers)
-        }
-        if original.type == .matching, let revisedMatches = review.revisedMatches, !appliedFields.contains(.matches) {
-            onApply { $0.matches = revisedMatches }
-            appliedFields.insert(.matches)
-        }
-        if let revisedFeedback = review.revisedFeedback, !appliedFields.contains(.feedback) {
-            onApply { $0.feedback = revisedFeedback }
-            appliedFields.insert(.feedback)
-        }
-    }
-
-    private func answersText(_ answers: [QuizAnswer]) -> String {
-        answers.map { "\($0.text)\($0.isCorrect ? "  (correct)" : "")" }.joined(separator: "\n")
-    }
-
-    private func matchesText(_ matches: [MatchingPair]) -> String {
-        matches.map { "\($0.prompt) → \($0.match)" }.joined(separator: "\n")
     }
 }
 
@@ -1815,7 +1656,7 @@ struct MatchingEditor: View {
 }
 
 struct AIPanel: View {
-    let quiz: Quiz
+    @Binding var quiz: Quiz
     let quizTitle: String
     /// The question currently selected in the sidebar, if any. When present, the
     /// panel shows item-level tools that read and write this question directly.
@@ -1835,6 +1676,8 @@ struct AIPanel: View {
     @State private var runningAction: String?
     @State private var isConfigPresented = false
     @State private var aiResult: AIResultContext?
+    /// Drives the paginated, applyable whole-quiz review sheet.
+    @State private var isQuizReviewPresented = false
     /// A parsed item review, shown in the formatted diff sheet with per-field Apply.
     @State private var reviewPresentation: ReviewPresentation?
     /// The selected question as it was when its review started — the diff "before".
@@ -1885,6 +1728,9 @@ struct AIPanel: View {
                     mutate(&selectedQuestion.wrappedValue)
                 }
             }
+        }
+        .sheet(isPresented: $isQuizReviewPresented) {
+            QuizReviewSheet(quizTitle: quizTitle, questions: $quiz.questions, loadBatch: makeReviewBatchLoader())
         }
     }
 
@@ -2036,10 +1882,50 @@ struct AIPanel: View {
     private func quizActionID(_ feature: AIFeature) -> String { "quiz-\(feature.rawValue)" }
 
     private func runQuizFeature(_ feature: AIFeature) {
+        // The whole-quiz review uses the paginated, applyable sheet for the
+        // auto-run providers; copy-paste still copies a single prompt.
+        if feature == .review, provider != .copyPaste {
+            if provider == .openAICompatible, URL(string: endpoint) == nil {
+                status = PanelStatus(text: "Enter a valid endpoint URL.", isError: true)
+                return
+            }
+            isQuizReviewPresented = true
+            return
+        }
         switch provider {
         case .openAICompatible: runQuizAPI(feature)
         case .copyPaste: copyQuizPrompt(feature)
         case .foundationModels: runFoundationModelsQuiz(feature)
+        }
+    }
+
+    /// Builds the per-page review loader for the current provider. Each call
+    /// reviews one page of questions in a single request and parses the JSON
+    /// array into one review per question.
+    private func makeReviewBatchLoader() -> ([QuizQuestion]) async throws -> [QuestionReview] {
+        let service = QuestionReviewService()
+        let quizTitle = self.quizTitle
+        let provider = self.provider
+        let apiKey = self.apiKey
+        let endpoint = self.endpoint
+        let model = self.model
+        return { questions in
+            let prompt = service.makeBatchPrompt(questions: questions, quizTitle: quizTitle)
+            let raw: String
+            switch provider {
+            case .foundationModels:
+                raw = await FoundationModelsRunner.run(prompt: service.systemInstruction + "\n\n" + prompt)
+            default:
+                guard let url = URL(string: endpoint) else { throw URLError(.badURL) }
+                let configuration = AIConfiguration(apiKey: apiKey, endpoint: url, model: model)
+                raw = try await AIClient().complete(
+                    systemInstruction: service.systemInstruction,
+                    userPrompt: prompt,
+                    configuration: configuration,
+                    temperature: 0.2
+                )
+            }
+            return service.parseBatch(raw, originals: questions)
         }
     }
 

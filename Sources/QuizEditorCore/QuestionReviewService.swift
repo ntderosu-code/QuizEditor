@@ -89,13 +89,96 @@ public struct QuestionReviewService: Sendable {
             return QuestionReview(summary: raw.trimmingCharacters(in: .whitespacesAndNewlines))
         }
 
-        return QuestionReview(
-            summary: dto.summary?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "No summary returned.",
-            suggestions: dto.suggestions ?? [],
-            revisedPrompt: nonEmpty(dto.revised?.prompt),
-            revisedAnswers: alignedAnswers(dto.revised?.answers, original: original.answers),
-            revisedMatches: alignedMatches(dto.revised?.matches, original: original.matches),
-            revisedFeedback: nonEmpty(dto.revised?.feedback)
+        return makeReview(summary: dto.summary, suggestions: dto.suggestions, revised: dto.revised, original: original)
+    }
+
+    // MARK: - Batch (whole-quiz page) review
+
+    /// Prompts for a review of several questions at once, returning a JSON array
+    /// keyed by `index`. Used by the paginated whole-quiz review (a page at a time).
+    public func makeBatchPrompt(questions: [QuizQuestion], quizTitle: String) -> String {
+        let items = questions.enumerated().map { index, question in
+            """
+            --- Question index \(index) (type: \(question.type.displayName)) ---
+            \(questionMarkedText(question))
+            """
+        }.joined(separator: "\n\n")
+
+        return """
+        Review these \(questions.count) quiz question(s) from the quiz titled "\(quizTitle)".
+
+        Evaluate each against these item-writing guidelines (look beyond grammar and spelling):
+        - The stem poses one clear, complete problem. Avoid double-barreled stems.
+        - Prefer positive phrasing. If the stem must be negative (NOT/EXCEPT), it should emphasize that word.
+        - Distractors are plausible, based on common misconceptions, and mutually exclusive.
+        - Options are parallel in grammar, length, and complexity. The correct answer must not stand out by being longest.
+        - Avoid "all of the above" and "none of the above"; avoid absolute terms and grammatical clues.
+        - Use plain, accessible language. Do not rely on color, position, or images without alt text.
+        - Feedback explains why the key is correct and why distractors are plausible but wrong.
+
+        Questions:
+        \(items)
+
+        Respond with ONLY a JSON array, no prose and no code fences. One object per
+        question that needs comment, each shaped like this:
+        [
+          {
+            "index": 0,
+            "summary": "one short paragraph assessing this question overall",
+            "suggestions": ["specific issue and the concrete fix", "..."],
+            "revised": {
+              "prompt": "improved stem text",
+              "answers": ["rewritten option 1", "rewritten option 2"],
+              "matches": [{"term": "rewritten left item", "match": "rewritten right item"}],
+              "feedback": "improved feedback text"
+            }
+          }
+        ]
+
+        Critical rules:
+        - "index" identifies which question above the object refers to.
+        - In "revised", suggest ONLY rewordings of existing text; keep the same meaning.
+        - Do NOT add, remove, or reorder answer options or matching pairs, and do NOT change which options are correct.
+        - Include ONLY the fields you would actually change; omit "revised" entirely if nothing needs rewording.
+        - Omit a question's object entirely if it has no issues.
+        """
+    }
+
+    /// Parses the batched JSON array into one review per original question, in
+    /// order. A question the model omits becomes a clean "no issues" review;
+    /// malformed output yields a clean review for every question so nothing breaks.
+    public func parseBatch(_ raw: String, originals: [QuizQuestion]) -> [QuestionReview] {
+        var reviews = originals.map { _ in QuestionReview(summary: "No issues reported.") }
+
+        guard let jsonString = extractJSONArray(from: raw),
+              let data = jsonString.data(using: .utf8),
+              let items = try? JSONDecoder().decode([BatchItemDTO].self, from: data) else {
+            return reviews
+        }
+
+        for (position, item) in items.enumerated() {
+            let index = item.index ?? position
+            guard originals.indices.contains(index) else { continue }
+            reviews[index] = makeReview(
+                summary: item.summary,
+                suggestions: item.suggestions,
+                revised: item.revised,
+                original: originals[index]
+            )
+        }
+        return reviews
+    }
+
+    /// Builds one `QuestionReview` from decoded fields, aligning revised text onto
+    /// the original so answer count and correctness are preserved.
+    private func makeReview(summary: String?, suggestions: [String]?, revised: ReviewDTO.Revised?, original: QuizQuestion) -> QuestionReview {
+        QuestionReview(
+            summary: summary?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "No summary returned.",
+            suggestions: suggestions ?? [],
+            revisedPrompt: nonEmpty(revised?.prompt),
+            revisedAnswers: alignedAnswers(revised?.answers, original: original.answers),
+            revisedMatches: alignedMatches(revised?.matches, original: original.matches),
+            revisedFeedback: nonEmpty(revised?.feedback)
         )
     }
 
@@ -148,6 +231,14 @@ public struct QuestionReviewService: Sendable {
         return String(raw[start...end])
     }
 
+    /// Extracts the outermost JSON array, tolerating code fences or surrounding prose.
+    private func extractJSONArray(from raw: String) -> String? {
+        guard let start = raw.firstIndex(of: "["), let end = raw.lastIndex(of: "]"), start < end else {
+            return nil
+        }
+        return String(raw[start...end])
+    }
+
     private func nonEmpty(_ value: String?) -> String? {
         guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else {
             return nil
@@ -171,6 +262,15 @@ private struct FlexibleText: Decodable {
     }
 
     private enum CodingKeys: String, CodingKey { case text }
+}
+
+/// One element of the batched review array: a `ReviewDTO` plus the index of the
+/// question it refers to.
+private struct BatchItemDTO: Decodable {
+    let index: Int?
+    let summary: String?
+    let suggestions: [String]?
+    let revised: ReviewDTO.Revised?
 }
 
 private struct ReviewDTO: Decodable {
