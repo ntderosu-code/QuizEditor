@@ -6,7 +6,7 @@ A native macOS app for authoring, reviewing, and round-tripping quizzes in open 
 
 > Built entirely on Apple frameworks (SwiftUI, AppKit, WebKit). No third-party dependencies.
 
-![Quiz Editor main window — searchable, filterable sidebar with difficulty badges; question editor showing points, difficulty, and tag metadata; and the AI Assistant panel](docs/screenshots/editor.png)
+![Quiz Editor main window — searchable sidebar with type and difficulty labels; question editor with type, points, and difficulty on one row above the prompt and answers; and the AI Assistant panel with whole-quiz and single-question tools](docs/screenshots/editor.png)
 
 ## Features
 
@@ -14,9 +14,9 @@ A native macOS app for authoring, reviewing, and round-tripping quizzes in open 
 - **Rich text (WYSIWYG)** — bold, italics, underline, lists, links, tables, and embedded images for prompts and feedback. Formatting round-trips through QTI.
 - **Question metadata** — per-question **tags**, **difficulty** (easy/medium/hard), and **points**. Tags and difficulty persist in the document and ride along in the exported QTI item metadata.
 - **Organize a long quiz** — a live **sidebar search**, **filter by tag or difficulty**, **drag-to-reorder** (with accessible Move Up/Down commands), **duplicate**, and a **quick-switch palette** (⌘⇧O) to jump to any question.
-- **Offline quality linter** — instant, rule-based item-writing checks (no network): missing/duplicate correct answers, "all of the above," unemphasized negative stems, length-bias cues, empty/duplicate options, missing feedback, and a/an grammatical cues. Inline in the editor, a per-question badge in the sidebar, and a quiz-wide **Quality Check** summary.
+- **Offline quality linter** — instant, rule-based item-writing checks (no network): missing/duplicate correct answers, "all of the above," unemphasized negative stems, length-bias cues, empty/duplicate options, missing feedback, and a/an grammatical cues. Inline in the editor, a per-question status dot in the sidebar (filled for a warning, hollow for a suggestion, so severity is never color alone), and a quiz-wide **Quality Check** summary.
 - **Accessible by design** — alt text is *required* on images before export; VoiceOver labels, Dynamic Type, full keyboard operation, and color that is never the sole signal.
-- **AI assistant** — per-question **review** against established item-writing guidelines (not just grammar), with a before/after diff and per-field "apply"; plus **authoring** — generate questions from a topic or learning objective (reviewed per-item before insertion), and generate **distractors** or **feedback** for the current question. Works with an OpenAI-compatible API, Apple Foundation Models, or copy/paste to another assistant.
+- **AI assistant** — the assistant panel offers clearly labeled tools for the **whole quiz** (review, suggest revisions, draft feedback, launch *Author with AI*) and for the **selected question** (review, generate distractors, generate feedback), all driven by an editable instruction you control. Per-question review runs against established item-writing guidelines (not just grammar), with a before/after diff and per-field "apply." Works with an OpenAI-compatible API, Apple Foundation Models, or copy/paste to another assistant. On Apple Foundation Models, a long quiz is paged into batches that fit the on-device token limit and stitched back into one document.
 - **Document-based** — quizzes are native `.quizeditor` documents (JSON). Open with ⌘O or by double-clicking in Finder; New (⌘N), Save (⌘S), Save As, rename, and autosave/versions all work as expected. Structural edits (import, merge, reorder, duplicate, delete) are undoable.
 - **Import** — **QTI** `.zip` packages (both per-file and single-file inline layouts) and **IMS Common Cartridge** (`.imscc`) exports — pulling in whole quizzes *and* item banks — plus simple marked plain text. A **question picker** (search, select all/none, preview, source labels) lets you import only the questions you want, with a *keep formatting* or *plain text* option for messy sources.
 - **Merge & question bank** — **Merge from File…** appends questions from other `.quizeditor` or QTI/Common Cartridge files, flagging duplicates by prompt + type. The **Question Bank** browser indexes every `.quizeditor` file in a folder (read-only) so you can search across all of them and add what you need to the open quiz.
@@ -30,7 +30,9 @@ A native macOS app for authoring, reviewing, and round-tripping quizzes in open 
 
 ### Import marked plain text
 
-![Import Marked Text dialog with a correct-answer marker and sample text](docs/screenshots/import.png)
+The import field starts empty with a placeholder and a collapsible **formatting guide** (syntax plus a worked example), so the sample text can never be imported by accident.
+
+![Import Marked Text dialog with a correct-answer marker, an empty field showing a placeholder, and a collapsible formatting guide](docs/screenshots/import.png)
 
 ## Keyboard shortcuts
 
@@ -80,7 +82,7 @@ swift test
 The AI review, authoring, distractor, and feedback features support three providers:
 
 - **OpenAI-compatible API** — supply an endpoint, model, and API key (stored locally via `@AppStorage`).
-- **Apple Foundation Models** — on-device, on supported macOS versions with Apple Intelligence enabled.
+- **Apple Foundation Models** — on-device, on supported macOS versions with Apple Intelligence enabled. Quiz-level tools page long quizzes into batches that fit the on-device token limit and combine the results into one document.
 - **Copy/Paste** — copies a prepared prompt for use in Claude, ChatGPT, or another assistant.
 
 API keys are stored on your machine and are only sent to the endpoint you configure.

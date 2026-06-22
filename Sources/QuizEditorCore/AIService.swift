@@ -242,4 +242,35 @@ public extension Quiz {
         }
         return lines.joined(separator: "\n")
     }
+
+    /// Splits the quiz into consecutive sub-quizzes whose marked-text representation
+    /// stays within `maxCharacters`. On-device models (Apple Foundation Models) have a
+    /// small context window of roughly 4096 tokens shared between the prompt and the
+    /// reply, so a long quiz has to be processed a page at a time. Each sub-quiz keeps
+    /// the quiz title. A single question larger than the budget is kept whole in its own
+    /// batch rather than being split, since splitting a question would corrupt it.
+    func batched(maxCharacters: Int) -> [Quiz] {
+        guard !questions.isEmpty else { return [] }
+        guard maxCharacters > 0 else { return [self] }
+
+        var batches: [Quiz] = []
+        var current: [QuizQuestion] = []
+
+        for question in questions {
+            let candidate = Quiz(title: title, questions: current + [question])
+            if !current.isEmpty, candidate.markedTextRepresentation.count > maxCharacters {
+                // Adding this question would overflow the budget, so close the current
+                // batch and start a new one with the question.
+                batches.append(Quiz(title: title, questions: current))
+                current = [question]
+            } else {
+                current.append(question)
+            }
+        }
+
+        if !current.isEmpty {
+            batches.append(Quiz(title: title, questions: current))
+        }
+        return batches
+    }
 }

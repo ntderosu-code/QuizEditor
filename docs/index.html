@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Quiz Editor: QTI and Common Cartridge quiz authoring for macOS</title>
-<meta name="description" content="A native macOS app for authoring, AI-reviewing, and round-tripping accessible quizzes through QTI and IMS Common Cartridge, for Canvas, Brightspace, Blackboard, Moodle, and any LMS that reads the standards.">
+<meta name="description" content="A free, private Mac app for writing rich, accessible quizzes and moving them in and out of any LMS through the open QTI and Common Cartridge formats. Works with Canvas, Brightspace, Blackboard, Moodle, and more. Nothing you write leaves your Mac.">
 <link rel="icon" type="image/png" href="screenshots/app-icon.png">
 <meta property="og:title" content="Quiz Editor">
-<meta property="og:description" content="Write better questions. Export them to any LMS. A native macOS quiz authoring app built on open standards.">
+<meta property="og:description" content="Write better quizzes. Open them in any LMS. A free, private Mac app for accessible quiz writing, built on open formats.">
 <meta property="og:image" content="screenshots/editor.png">
 <meta property="og:type" content="website">
 <meta name="theme-color" content="#5b56d6">
@@ -66,7 +66,7 @@
       --line:       oklch(0.34 0.030 286);
       --line-strong:oklch(0.44 0.034 286);
       --indigo:     oklch(0.76 0.150 286);
-      --indigo-fill:oklch(0.62 0.170 285);
+      --indigo-fill:oklch(0.52 0.175 285);   /* dark-mode button fill, AA with --on-indigo text */
       --indigo-deep:oklch(0.34 0.110 286);
       --teal:       oklch(0.78 0.110 200);
       --teal-deep:  oklch(0.68 0.095 200);
@@ -117,6 +117,10 @@
     outline-offset: 3px;
     border-radius: 4px;
   }
+  /* On the dark bands the indigo ring loses contrast; use a light ring instead. */
+  .band :focus-visible, .a11y :focus-visible {
+    outline-color: var(--on-indigo);
+  }
 
   .mono {
     font-family: "Spline Sans Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -158,8 +162,8 @@
   .brand img { inline-size: 30px; block-size: 30px; border-radius: 8px; }
   .brand span { font-family: "Bricolage Grotesque", system-ui, sans-serif; font-size: 1.12rem; }
   .nav .links { display: flex; gap: 1.4rem; margin-inline-start: auto; align-items: center; }
-  .nav .links a { color: var(--ink-soft); text-decoration: none; font-size: var(--step--1); font-weight: 500; }
-  .nav .links a:hover { color: var(--ink); }
+  .nav .links a:not(.btn) { color: var(--ink-soft); text-decoration: none; font-size: var(--step--1); font-weight: 500; }
+  .nav .links a:not(.btn):hover { color: var(--ink); }
   .nav .ghbtn { display: none; }
   @media (min-width: 720px) { .nav .ghbtn { display: inline-flex; } }
 
@@ -237,6 +241,7 @@
   /* ---- Drenched indigo band (standards) ---- */
   .band { background: var(--indigo-deep); color: var(--on-indigo); }
   .band a:not(.btn) { color: var(--on-indigo); }
+  .band a:not(.btn):hover { color: color-mix(in oklch, var(--on-indigo) 80%, var(--teal)); }
   .band .eyebrow { color: color-mix(in oklch, var(--teal) 75%, white); }
   .band h2 { color: var(--on-indigo); }
   .band .sec-lede { color: color-mix(in oklch, var(--on-indigo) 84%, transparent); max-width: 60ch; }
@@ -281,18 +286,6 @@
   .a11y .grid2 { display: grid; gap: clamp(1.5rem,4vw,3.5rem); grid-template-columns: 1fr; align-items: start; }
   @media (min-width: 860px) { .a11y .grid2 { grid-template-columns: 0.85fr 1fr; } }
 
-  /* ---- Get started ---- */
-  .terminal {
-    background: oklch(0.18 0.024 286); color: oklch(0.92 0.012 286);
-    border-radius: var(--radius); padding: 1.3rem 1.4rem; overflow-x: auto;
-    font-family: "Spline Sans Mono", ui-monospace, monospace; font-size: var(--step--1); line-height: 1.9;
-    border: 1px solid oklch(0.32 0.03 286);
-  }
-  .terminal .p { color: oklch(0.70 0.10 200); user-select: none; }
-  .terminal .cmt { color: oklch(0.62 0.02 286); }
-  .start-grid { display: grid; gap: clamp(1.8rem, 4vw, 3.5rem); grid-template-columns: 1fr; align-items: center; }
-  @media (min-width: 880px) { .start-grid { grid-template-columns: 0.9fr 1.1fr; } }
-
   /* ---- Footer ---- */
   footer.site { border-top: 1px solid var(--line); padding-block: clamp(2.5rem, 5vw, 3.5rem); }
   .foot { display: flex; flex-wrap: wrap; gap: 1.4rem 2rem; align-items: center; justify-content: space-between; }
@@ -331,11 +324,11 @@
       <span>Quiz&nbsp;Editor</span>
     </a>
     <nav class="links" aria-label="Primary">
-      <a href="#standards">Standards</a>
       <a href="#authoring">Authoring</a>
       <a href="#review">AI &amp; review</a>
       <a href="#access">Accessibility</a>
-      <a class="btn btn-primary ghbtn" href="https://github.com/ntderosu-code/QuizEditor">View on GitHub</a>
+      <a href="#contribute">Contribute</a>
+      <a class="btn btn-primary ghbtn" href="https://github.com/ntderosu-code/QuizEditor/releases">Download</a>
     </nav>
   </div>
 </header>
@@ -355,17 +348,17 @@
           <span class="bubble"></span>
           <span class="lbl mono">choose the right answer</span>
         </div>
-        <h1 class="hero-title reveal d1">Write better questions. Export them to <span class="em">any LMS</span>.</h1>
-        <p class="lede reveal d2">A native macOS app for authoring rich, accessible quizzes and round-tripping them through <strong>QTI</strong> and <strong>IMS Common Cartridge</strong>. Built for Canvas, Brightspace, Blackboard, Moodle, and anything else that reads the standards. AI sharpens your items; your work never leaves your Mac.</p>
+        <h1 class="hero-title reveal d1">Write better quizzes. Open them in <span class="em">any LMS</span>.</h1>
+        <p class="lede reveal d2">A free Mac app for writing rich, accessible quizzes and moving them in and out of whatever you teach with. It speaks the open <strong>QTI</strong> and <strong>Common Cartridge</strong> formats, so your questions go straight into Canvas, Brightspace, Blackboard, Moodle, and the rest. Optional AI helps you sharpen each question, and <strong>nothing you write ever leaves your Mac</strong>.</p>
         <div class="hero-cta reveal d3">
-          <a class="btn btn-primary" href="https://github.com/ntderosu-code/QuizEditor">View on GitHub</a>
-          <a class="btn btn-ghost" href="#start">Build it from source</a>
+          <a class="btn btn-primary" href="https://github.com/ntderosu-code/QuizEditor/releases">Download for macOS</a>
+          <a class="btn btn-ghost" href="https://github.com/ntderosu-code/QuizEditor">View on GitHub</a>
         </div>
-        <p class="hero-meta mono reveal d3">macOS&nbsp;14+&nbsp;&nbsp;·&nbsp;&nbsp;Swift&nbsp;6&nbsp;&nbsp;·&nbsp;&nbsp;<b>MIT</b>&nbsp;&nbsp;·&nbsp;&nbsp;zero&nbsp;dependencies</p>
+        <p class="hero-meta mono reveal d3">macOS&nbsp;14+&nbsp;&nbsp;·&nbsp;&nbsp;Free&nbsp;and&nbsp;open&nbsp;source&nbsp;&nbsp;·&nbsp;&nbsp;<b>No&nbsp;account,&nbsp;no&nbsp;cloud</b></p>
       </div>
       <div class="shot reveal d2">
         <img src="screenshots/editor.png" width="2400" height="1520" fetchpriority="high"
-             alt="The Quiz Editor window: a searchable, filterable question sidebar with difficulty badges, a question editor showing points, difficulty, and tag fields, and an AI Assistant panel.">
+             alt="The Quiz Editor window: a searchable question sidebar with type and difficulty labels, a question editor with type, points, and difficulty on one row above the prompt and answers, and an AI Assistant panel offering whole-quiz and single-question tools.">
       </div>
     </div>
   </section>
@@ -373,9 +366,9 @@
   <!-- STANDARDS BAND -->
   <section class="band pad" id="standards">
     <div class="wrap">
-      <p class="eyebrow reveal"><span class="bubble filled" aria-hidden="true"></span> Interoperability, not lock-in</p>
-      <h2 class="sec reveal d1">Author once. Open it wherever you teach.</h2>
-      <p class="sec-lede reveal d1">QTI and IMS Common Cartridge are open standards, not one vendor's feature. Quiz Editor reads and writes them faithfully, so a quiz you write today still imports cleanly into next year's platform.</p>
+      <p class="eyebrow reveal"><span class="bubble filled" aria-hidden="true"></span> Open formats, not a walled garden</p>
+      <h2 class="sec reveal d1">Write it once. Open it wherever you teach.</h2>
+      <p class="sec-lede reveal d1">QTI and Common Cartridge are open formats that every major learning platform can read, not one company's private feature. Quiz Editor reads and writes them carefully, so a quiz you write today still opens cleanly if your school switches platforms next year.</p>
       <div class="stamps reveal d2">
         <span class="stamp"><span class="dot"></span>QTI&nbsp;1.2</span>
         <span class="stamp"><span class="dot"></span>QTI&nbsp;2.1</span>
@@ -392,8 +385,8 @@
     <div class="wrap feature">
       <div class="ftext reveal">
         <p class="eyebrow"><span class="bubble filled" aria-hidden="true"></span> Authoring</p>
-        <h2 class="sec">Every question type, written like prose.</h2>
-        <p>Multiple choice, multiple answer, true/false, fill-in-the-blank, short answer, essay, and matching. Write prompts and feedback as real rich text, with <strong>images, tables, and links that survive the round trip</strong> through QTI. Images cannot leave the app without alt text.</p>
+        <h2 class="sec">A real editor for every kind of question.</h2>
+        <p>Multiple choice, multiple answer, true/false, fill-in-the-blank, short answer, essay, and matching. Write your prompts and feedback with proper formatting, <strong>images, tables, and links that stay intact</strong> when you export. An image can't leave the app until it has alt text.</p>
         <ul class="checklist">
           <li><span class="bubble filled" aria-hidden="true"></span><span><b>Tag, rate, and weight</b> every question with topics, difficulty, and points.</span></li>
           <li><span class="bubble filled" aria-hidden="true"></span><span><b>Find anything fast</b> with live sidebar search, tag and difficulty filters, and a quick-switch palette.</span></li>
@@ -417,9 +410,9 @@ Type: Multiple Choice
     <div class="wrap feature flip">
       <div class="ftext reveal">
         <p class="eyebrow"><span class="bubble filled" aria-hidden="true"></span> Review &amp; AI</p>
-        <h2 class="sec">A reviewer that reads for item-writing, not just spelling.</h2>
-        <p>An <strong>offline linter</strong> flags the classics instantly, no network required: no correct answer, an unemphasized negative stem, a giveaway longest option, all-of-the-above, missing feedback. When you want more, <strong>AI review</strong> returns a before-and-after you apply field by field, and can draft new questions, distractors, and feedback.</p>
-        <p>Bring an OpenAI-compatible API, run Apple's on-device models, or copy a prompt into any assistant and paste the reply back. Results open in a window you can read, copy, or save.</p>
+        <h2 class="sec">A second read for your questions, not just your spelling.</h2>
+        <p>A built-in check looks over every question as you write, right on your Mac, and points out the problems experienced test-writers watch for: <strong>a question with no correct answer marked, a "not" or "except" that's easy to miss, one answer that's tellingly longer than the others, an "all of the above," a missing feedback note</strong>. It needs no internet and sees nothing but your own file.</p>
+        <p>Want a closer look? The <strong>AI Assistant</strong> works on the whole quiz or a single question: it suggests a clearer rewrite you accept one field at a time, and drafts fresh questions, answer choices, and feedback. Use Apple's on-device models, connect your own AI service, or copy a prompt into any chatbot and paste the reply back. Long quizzes are paged into batches that fit Apple's on-device models and stitched back into one document, so length is never a wall. Your questions stay with you.</p>
       </div>
       <div class="shot reveal d1">
         <img src="screenshots/ai-review.png" width="2704" height="1784" loading="lazy"
@@ -433,17 +426,18 @@ Type: Multiple Choice
     <div class="wrap feature">
       <div class="ftext reveal">
         <p class="eyebrow"><span class="bubble filled" aria-hidden="true"></span> Import &amp; export</p>
-        <h2 class="sec">Bring questions in. Send finished exams out.</h2>
-        <p>Import a QTI <code class="mono">.zip</code>, an <strong>IMS Common Cartridge</strong>, or loosely marked plain text. Pull in exactly the questions you want, from a whole course cartridge or a single <strong>item bank</strong>, and merge banks across files.</p>
+        <h2 class="sec">Bring questions in. Send your quiz wherever it needs to go.</h2>
+        <p>Import a QTI <code class="mono">.zip</code>, a <strong>Common Cartridge</strong>, or plain text you've marked up by hand. Pull in exactly the questions you want, whether that's a whole course package or a single <strong>question bank</strong>, and combine questions from several files into one quiz.</p>
+        <p>When you're done, send it out three ways: <strong>up to your LMS</strong> as a standards-clean QTI file, <strong>into a document</strong> you can share or edit, or <strong>onto paper</strong> as a print-ready exam with its own answer key.</p>
         <ul class="checklist">
-          <li><span class="bubble filled" aria-hidden="true"></span><span>A <b>question picker</b> with search, select-all, and per-question preview before anything lands.</span></li>
-          <li><span class="bubble filled" aria-hidden="true"></span><span>A read-only <b>question bank</b> across a folder of saved quizzes.</span></li>
-          <li><span class="bubble filled" aria-hidden="true"></span><span>Export <b>validated QTI</b>, a formatted document, or a print-ready <b>paper exam</b> with a separate answer key.</span></li>
+          <li><span class="bubble filled" aria-hidden="true"></span><span>A <b>question picker</b> with search, select-all, and a preview of each question before anything is added.</span></li>
+          <li><span class="bubble filled" aria-hidden="true"></span><span>A read-only <b>question bank</b> that gathers every question across a folder of saved quizzes.</span></li>
+          <li><span class="bubble filled" aria-hidden="true"></span><span>Exports that are <b>checked before they're written</b>, so what lands in your LMS is what you wrote.</span></li>
         </ul>
       </div>
       <div class="shot reveal d1">
-        <img src="screenshots/import.png" width="2704" height="1784" loading="lazy"
-             alt="The Import Marked Text dialog: a correct-answer marker setting and a panel of sample quiz questions written in plain text.">
+        <img src="screenshots/import.png" width="2400" height="1520" loading="lazy"
+             alt="The Import Marked Text dialog: a correct-answer marker setting, an empty text field showing a grey placeholder prompt, and a collapsible formatting guide.">
       </div>
     </div>
   </section>
@@ -454,14 +448,15 @@ Type: Multiple Choice
       <div class="reveal">
         <p class="eyebrow"><span class="bubble filled" aria-hidden="true"></span> Accessibility</p>
         <h2 class="sec">Accessible is the floor, not a feature.</h2>
-        <p class="lead">WCAG 2.1 AA is the baseline this app is built to, and it ships that way the first time, not as a follow-up.</p>
+        <p class="lead">Quiz Editor speaks the Mac's own accessibility language, the same one Apple builds into every app, and it works that way from the first launch, not as a follow-up.</p>
       </div>
       <ul class="checklist reveal d1">
-        <li><span class="bubble filled" aria-hidden="true"></span><span><b>Alt text is required</b> on every image before export, or an explicit decorative choice.</span></li>
-        <li><span class="bubble filled" aria-hidden="true"></span><span><b>Full keyboard operation</b> with a visible focus ring on every control.</span></li>
-        <li><span class="bubble filled" aria-hidden="true"></span><span><b>VoiceOver labels</b> throughout, and status changes announced as they happen.</span></li>
-        <li><span class="bubble filled" aria-hidden="true"></span><span><b>Color is never the only signal.</b> A correct answer carries a mark and a label, not just a hue.</span></li>
-        <li><span class="bubble filled" aria-hidden="true"></span><span><b>Dynamic Type</b> is respected, so the interface scales with the reader.</span></li>
+        <li><span class="bubble filled" aria-hidden="true"></span><span><b>VoiceOver</b> reads every control by name, and announces changes, like a saved export or a flagged question, as they happen.</span></li>
+        <li><span class="bubble filled" aria-hidden="true"></span><span><b>Full keyboard control,</b> with a clear focus ring on whatever you're working with.</span></li>
+        <li><span class="bubble filled" aria-hidden="true"></span><span><b>Dynamic Type</b> is respected, so the whole interface grows when you make text larger in System Settings.</span></li>
+        <li><span class="bubble filled" aria-hidden="true"></span><span><b>Reduce Motion and Increase Contrast</b> are honored, so the app matches the way you've set up your Mac.</span></li>
+        <li><span class="bubble filled" aria-hidden="true"></span><span><b>Color is never the only signal.</b> A correct answer carries a mark and a label, not just a hue, and so does every quiz you make.</span></li>
+        <li><span class="bubble filled" aria-hidden="true"></span><span><b>Alt text is required</b> on every image before it can be exported, unless you mark it decorative on purpose.</span></li>
       </ul>
     </div>
   </section>
@@ -469,30 +464,39 @@ Type: Multiple Choice
   <!-- NATIVE / LOCAL -->
   <section class="pad" id="native">
     <div class="wrap">
-      <p class="eyebrow reveal"><span class="bubble filled" aria-hidden="true"></span> Native and local</p>
-      <h2 class="sec reveal d1">Yours to keep, on a Mac that already trusts it.</h2>
-      <p class="sec-lede reveal d1">Built entirely on Apple frameworks, SwiftUI, AppKit, and WebKit, with no third-party dependencies. Quizzes are plain-JSON <code class="mono">.quizeditor</code> documents you can diff, back up, and own. Open, edit, review, and export entirely offline. MIT licensed.</p>
+      <p class="eyebrow reveal"><span class="bubble filled" aria-hidden="true"></span> Private by design</p>
+      <h2 class="sec reveal d1">It all stays on your Mac.</h2>
+      <p class="sec-lede reveal d1">There's no account to make, no server to sign in to, and nothing is uploaded anywhere. You can write, review, and export an entire quiz with the Wi-Fi off. Your quizzes are ordinary <code class="mono">.quizeditor</code> files that you can back up, email, and keep for as long as you like. It's built entirely on Apple's own frameworks, so there's nothing extra to install or trust, and it's free and open source under the MIT license.</p>
     </div>
   </section>
 
   <!-- GET STARTED -->
   <section class="band pad" id="start">
-    <div class="wrap start-grid">
-      <div class="reveal">
-        <p class="eyebrow"><span class="bubble filled" aria-hidden="true"></span> Get started</p>
-        <h2 class="sec">Clone it and run.</h2>
-        <p class="sec-lede">It is open source. Build it from the repository with a Swift 6 toolchain on macOS 14 or later. The full test suite runs with one command.</p>
-        <p style="margin-top:1.8rem"><a class="btn btn-onindigo" href="https://github.com/ntderosu-code/QuizEditor">Open the repository</a></p>
-      </div>
-      <div class="reveal d1">
-        <pre class="terminal" aria-label="Terminal commands to build and run Quiz Editor"><span class="cmt"># clone, then run the app</span>
-<span class="p">$</span> git clone https://github.com/ntderosu-code/QuizEditor.git
-<span class="p">$</span> cd QuizEditor
-<span class="p">$</span> swift run QuizEditorApp
+    <div class="wrap">
+      <p class="eyebrow reveal"><span class="bubble filled" aria-hidden="true"></span> Get it</p>
+      <h2 class="sec reveal d1">Download it and open it.</h2>
+      <p class="sec-lede reveal d1">Grab the latest release for your Mac, drag it to Applications, and you're writing quizzes. It's signed and notarized by Apple, so it opens with a double-click, no warnings, no command line. macOS 14 (Sonoma) or later. Free, now and always.</p>
+      <p class="reveal d2" style="margin-top:2rem">
+        <a class="btn btn-onindigo" href="https://github.com/ntderosu-code/QuizEditor/releases">Download for macOS</a>
+      </p>
+      <p class="note reveal d2">Rather build it yourself? It's one command with a Swift&nbsp;6 toolchain: <code class="mono">swift run QuizEditorApp</code> from a clone of the <a href="https://github.com/ntderosu-code/QuizEditor">repository</a>.</p>
+    </div>
+  </section>
 
-<span class="cmt"># run the tests</span>
-<span class="p">$</span> swift test</pre>
-      </div>
+  <!-- CONTRIBUTE -->
+  <section class="pad" id="contribute">
+    <div class="wrap">
+      <p class="eyebrow reveal"><span class="bubble filled" aria-hidden="true"></span> Lend a hand</p>
+      <h2 class="sec reveal d1">You don't have to be a programmer to help.</h2>
+      <p class="sec-lede reveal d1">This is a small, open project, and the best ideas come from people who actually write and give quizzes. If you've ever thought "I wish it could&nbsp;…," that's exactly the kind of thing worth sharing. Here are a few easy ways in.</p>
+      <ul class="checklist reveal d2" style="margin-top:2rem; max-width:62ch">
+        <li><span class="bubble filled" aria-hidden="true"></span><span><b>Suggest a feature or report a snag.</b> Open an <a href="https://github.com/ntderosu-code/QuizEditor/issues/new">issue</a> on GitHub and just describe it in plain words. No special format, no code, no jargon required. Telling us what tripped you up is genuinely useful.</span></li>
+        <li><span class="bubble filled" aria-hidden="true"></span><span><b>Improve the words.</b> A confusing label, a typo, a help note that could be clearer: small wording fixes make the app better for everyone, and they're a friendly first contribution.</span></li>
+        <li><span class="bubble filled" aria-hidden="true"></span><span><b>Try building a change with AI.</b> Tools like Claude or ChatGPT are great at helping you find the right file and draft a small edit, even if you've never opened Xcode. Take your time, and don't worry about getting it perfect, that's what review is for.</span></li>
+      </ul>
+      <p class="reveal d3" style="margin-top:2rem">
+        <a class="btn btn-ghost" href="https://github.com/ntderosu-code/QuizEditor/issues/new">Share an idea</a>
+      </p>
     </div>
   </section>
 </main>
@@ -504,7 +508,7 @@ Type: Multiple Choice
         <img src="screenshots/app-icon.png" alt="" width="30" height="30">
         <span>Quiz&nbsp;Editor</span>
       </a>
-      <p>MIT &copy; 2026 Byron R Roush. Built on Apple frameworks, with no third-party libraries.</p>
+      <p>MIT &copy; 2026 Byron R Roush. A free, private Mac app. Nothing you create ever leaves your computer.</p>
       <div class="flinks">
         <a href="https://github.com/ntderosu-code/QuizEditor">GitHub</a>
         <a href="https://github.com/ntderosu-code/QuizEditor/blob/main/LICENSE">License</a>

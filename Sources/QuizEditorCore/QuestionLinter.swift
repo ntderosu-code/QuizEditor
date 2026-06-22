@@ -264,8 +264,8 @@ public struct QuestionLinter: Sendable {
         return LintFinding(
             rule: .missingFeedback,
             severity: .suggestion,
-            message: "This question has no feedback.",
-            suggestion: "Add feedback explaining why the key is correct and the distractors are not."
+            message: "This question has no feedback for students.",
+            suggestion: "Fill in the Feedback for students field to explain why the key is correct and the distractors are not."
         )
     }
 

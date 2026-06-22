@@ -159,7 +159,7 @@ struct ContentView: View {
     @State private var isImporterPresented = false
     @State private var isQTIImporterPresented = false
     @State private var isMergeImporterPresented = false
-    @State private var importText = sampleImportText
+    @State private var importText = ""
     @State private var errorMessage: String?
     @State private var exportDocument = QTIArchiveDocument(data: Data())
     @State private var isExporterPresented = false
@@ -180,6 +180,21 @@ struct ContentView: View {
     @State private var isIMSCCImporterPresented = false
 
     private var lintFindings: [UUID: [LintFinding]] { QuestionLinter().findings(for: quiz) }
+
+    /// A binding to the currently selected question's element in the quiz, so the
+    /// AI panel's item-level tools can read and write it directly. Nil when nothing
+    /// is selected or the selection no longer exists.
+    private var selectedQuestionBinding: Binding<QuizQuestion>? {
+        guard let id = selectedQuestionID,
+              let index = quiz.questions.firstIndex(where: { $0.id == id }) else { return nil }
+        return $quiz.questions[index]
+    }
+
+    private var selectedQuestionNumber: Int? {
+        guard let id = selectedQuestionID,
+              let index = quiz.questions.firstIndex(where: { $0.id == id }) else { return nil }
+        return index + 1
+    }
 
     var body: some View {
         NavigationSplitView {
@@ -224,8 +239,14 @@ struct ContentView: View {
             .frame(minWidth: 320, maxWidth: .infinity, maxHeight: .infinity)
         }
         .inspector(isPresented: $isAIPanelVisible) {
-            AIPanel(quiz: quiz)
-                .inspectorColumnWidth(min: 280, ideal: 320, max: 440)
+            AIPanel(
+                quiz: quiz,
+                quizTitle: quiz.title,
+                selectedQuestion: selectedQuestionBinding,
+                selectedQuestionNumber: selectedQuestionNumber,
+                onAuthorWithAI: { isAuthoringPresented = true }
+            )
+            .inspectorColumnWidth(min: 280, ideal: 320, max: 440)
         }
         .toolbar {
             // Grouped by function so each cluster renders as its own Liquid
@@ -1250,16 +1271,6 @@ struct QuestionEditor: View {
                     .help("Delete this question")
                 }
 
-                LabeledField("Question Type") {
-                    Picker("Question Type", selection: $question.type) {
-                        ForEach(QuizQuestionType.allCases) { type in
-                            Text(type.displayName).tag(type)
-                        }
-                    }
-                    .labelsHidden()
-                    .fixedSize()
-                }
-
                 QuestionMetadataEditor(question: $question)
 
                 if let reviewError {
@@ -1284,9 +1295,13 @@ struct QuestionEditor: View {
                     RichTextField(title: "Feedback", text: $question.feedback, minHeight: 140, showsTitle: false)
                         .padding(.top, 8)
                 } label: {
-                    Text("Feedback")
+                    Text("Feedback for students")
                         .font(.subheadline.weight(.semibold))
                 }
+
+                Divider()
+
+                QuestionTagsEditor(question: $question)
             }
             .padding(24)
         }
@@ -1651,7 +1666,7 @@ struct AnswerEditor: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("Answers")
-                    .font(.headline)
+                    .font(.subheadline.weight(.semibold))
                 Spacer()
                 Button {
                     addAnswer()
@@ -1761,91 +1776,49 @@ struct MatchingEditor: View {
 
 struct AIPanel: View {
     let quiz: Quiz
+    let quizTitle: String
+    /// The question currently selected in the sidebar, if any. When present, the
+    /// panel shows item-level tools that read and write this question directly.
+    let selectedQuestion: Binding<QuizQuestion>?
+    /// 1-based position of the selected question, for the section heading.
+    let selectedQuestionNumber: Int?
+    /// Opens the full Author with AI sheet, which ContentView owns.
+    let onAuthorWithAI: () -> Void
 
     @AppStorage("aiProvider") private var provider = AIProvider.openAICompatible
     @AppStorage("aiAPIKey") private var apiKey = ""
     @AppStorage("aiEndpoint") private var endpoint = "https://api.openai.com/v1/chat/completions"
     @AppStorage("aiModel") private var model = "gpt-4o-mini"
-    @State private var feature = AIFeature.review
-    @State private var instruction = "Check the quiz for clarity, answer-key issues, accessibility, feedback quality, and LMS import readiness."
-    @State private var isRunning = false
+    @State private var instruction = "Check for clarity, answer-key issues, accessibility, feedback quality, and LMS import readiness."
+    /// The id of the tool that is currently running, or nil when idle. Used to show
+    /// a spinner on the active button and disable the others.
+    @State private var runningAction: String?
     @State private var isConfigPresented = false
     @State private var aiResult: AIResultContext?
     @State private var status: PanelStatus?
 
+    private var isRunning: Bool { runningAction != nil }
+
+    private var runner: ConfiguredAIRunner {
+        ConfiguredAIRunner(provider: provider, apiKey: apiKey, endpoint: endpoint, model: model)
+    }
+
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("AI Assistant")
-                    .font(.title2.bold())
-                Text("Review and improve your quiz with an API, Apple's on-device models, or copy/paste to another assistant.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Provider")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Menu {
-                        Picker("Provider", selection: $provider) {
-                            ForEach(AIProvider.allCases) { provider in
-                                Text(provider.displayName).tag(provider)
-                            }
-                        }
-                        .pickerStyle(.inline)
-
-                        Divider()
-
-                        Button {
-                            isConfigPresented = true
-                        } label: {
-                            Label("Configure…", systemImage: "gearshape")
-                        }
-                    } label: {
-                        Text(provider.displayName)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .menuStyle(.button)
-                    .help("Choose the AI provider and configure API credentials")
+            VStack(alignment: .leading, spacing: 18) {
+                header
+                providerSection
+                instructionSection
+                quizToolsSection
+                if let selectedQuestion {
+                    itemToolsSection(selectedQuestion)
                 }
-
-                Picker("Feature", selection: $feature) {
-                    ForEach(AIFeature.allCases) { feature in
-                        Text(feature.displayName).tag(feature)
-                    }
-                }
-
-                LabeledTextEditor(title: "Instruction", text: $instruction, minHeight: 120)
-
-                HStack {
-                    Button {
-                        runAI()
-                    } label: {
-                        if isRunning {
-                            ProgressView()
-                                .controlSize(.small)
-                            Text("Running…")
-                        } else {
-                            Label(primaryActionTitle, systemImage: primaryActionIcon)
-                        }
-                    }
-                    .disabled(isRunning)
-                    .buttonStyle(.glassProminent)
-
-                    if provider == .copyPaste {
-                        Button("Paste Response", action: pasteAIResponse)
-                            .buttonStyle(.glass)
-                    }
-                }
-
                 if let status {
                     Label(status.text, systemImage: status.isError ? "exclamationmark.triangle.fill" : "info.circle")
                         .font(.caption)
                         .foregroundStyle(status.isError ? .orange : .secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-
                 Label("Results open in a window you can read, copy, or save.", systemImage: "rectangle.portrait.and.arrow.right")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -1864,67 +1837,192 @@ struct AIPanel: View {
         }
     }
 
-    private var primaryActionTitle: String {
-        switch provider {
-        case .openAICompatible: "Run \(feature.displayName)"
-        case .copyPaste: "Copy Prompt"
-        case .foundationModels: "Run Locally"
+    // MARK: - Sections
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("AI Assistant")
+                .font(.title2.bold())
+            Text("Improve your quiz with an API, Apple's on-device models, or copy and paste to another assistant.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    private var primaryActionIcon: String {
-        switch provider {
-        case .openAICompatible: "sparkles"
-        case .copyPaste: "doc.on.doc"
-        case .foundationModels: "apple.logo"
+    private var providerSection: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Provider")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Menu {
+                Picker("Provider", selection: $provider) {
+                    ForEach(AIProvider.allCases) { provider in
+                        Text(provider.displayName).tag(provider)
+                    }
+                }
+                .pickerStyle(.inline)
+
+                Divider()
+
+                Button {
+                    isConfigPresented = true
+                } label: {
+                    Label("Configure…", systemImage: "gearshape")
+                }
+            } label: {
+                Text(provider.displayName)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .menuStyle(.button)
+            .help("Choose the AI provider and configure API credentials")
         }
     }
 
-    private func runAI() {
-        switch provider {
-        case .openAICompatible:
-            runOpenAICompatibleRequest()
-        case .copyPaste:
-            copyPromptToClipboard()
-        case .foundationModels:
-            runFoundationModelsRequest()
+    private var instructionSection: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            LabeledTextEditor(
+                title: "Instruction",
+                text: $instruction,
+                minHeight: 96,
+                placeholder: "Tell the AI what to focus on…"
+            )
+            Text("Edit this to say what the AI should look at, like \u{201C}tighten the wording\u{201D} or \u{201C}check the answer keys.\u{201D} It applies to the tools below.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    private func runOpenAICompatibleRequest() {
+    private var quizToolsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            sectionHeader("Whole quiz")
+            toolButton("Review Quiz", systemImage: "sparkles", id: quizActionID(.review), prominent: true) {
+                runQuizFeature(.review)
+            }
+            toolButton("Suggest Revisions", systemImage: "pencil.and.outline", id: quizActionID(.revise)) {
+                runQuizFeature(.revise)
+            }
+            toolButton("Draft Feedback", systemImage: "text.bubble", id: quizActionID(.generateFeedback)) {
+                runQuizFeature(.generateFeedback)
+            }
+            toolButton("Author New Questions…", systemImage: "plus.square.on.square", id: "author", disabledWhenRunning: false, action: onAuthorWithAI)
+
+            if provider == .copyPaste {
+                Button("Paste Response", action: pasteAIResponse)
+                    .buttonStyle(.glass)
+                    .disabled(isRunning)
+            }
+            if provider == .foundationModels {
+                Text("Large quizzes run in batches to fit Apple's on-device limit, then combine into one document.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func itemToolsSection(_ binding: Binding<QuizQuestion>) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Divider().padding(.vertical, 2)
+            sectionHeader(selectedQuestionNumber.map { "Question \($0)" } ?? "Selected question")
+            toolButton("Review This Question", systemImage: "sparkles", id: "item-review") {
+                reviewSelectedQuestion(binding)
+            }
+            toolButton("Generate Distractors", systemImage: "rectangle.stack.badge.plus", id: "item-distractors", disabled: !canGenerateDistractors(binding.wrappedValue)) {
+                generateItemDistractors(binding)
+            }
+            toolButton("Generate Feedback", systemImage: "text.bubble", id: "item-feedback") {
+                generateItemFeedback(binding)
+            }
+        }
+    }
+
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title.uppercased())
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    /// A full-width tool button. Shows a spinner in place of its icon while its own
+    /// action is running, and is disabled while any tool is running.
+    @ViewBuilder
+    private func toolButton(
+        _ title: String,
+        systemImage: String,
+        id: String,
+        prominent: Bool = false,
+        disabled: Bool = false,
+        disabledWhenRunning: Bool = true,
+        action: @escaping () -> Void
+    ) -> some View {
+        let button = Button(action: action) {
+            HStack(spacing: 7) {
+                if runningAction == id {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Image(systemName: systemImage).frame(width: 18)
+                }
+                Text(title)
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(.rect)
+        }
+        .disabled(disabled || (disabledWhenRunning && isRunning))
+
+        if prominent {
+            button.buttonStyle(.glassProminent)
+        } else {
+            button.buttonStyle(.glass)
+        }
+    }
+
+    // MARK: - Quiz-level actions
+
+    private func quizActionID(_ feature: AIFeature) -> String { "quiz-\(feature.rawValue)" }
+
+    private func runQuizFeature(_ feature: AIFeature) {
+        switch provider {
+        case .openAICompatible: runQuizAPI(feature)
+        case .copyPaste: copyQuizPrompt(feature)
+        case .foundationModels: runFoundationModelsQuiz(feature)
+        }
+    }
+
+    private func runQuizAPI(_ feature: AIFeature) {
         guard let endpointURL = URL(string: endpoint) else {
             status = PanelStatus(text: "Enter a valid endpoint URL.", isError: true)
             return
         }
-
-        isRunning = true
+        runningAction = quizActionID(feature)
         status = nil
         let configuration = AIConfiguration(apiKey: apiKey, endpoint: endpointURL, model: model)
-        let feature = self.feature
-        let quiz = self.quiz
         let instruction = self.instruction
-
+        let quiz = self.quiz
         Task {
             do {
                 let result = try await AIClient().run(feature: feature, quiz: quiz, instruction: instruction, configuration: configuration)
                 await MainActor.run {
-                    isRunning = false
-                    presentResult(result)
+                    runningAction = nil
+                    presentResult(result, title: feature.displayName)
                 }
             } catch {
                 await MainActor.run {
-                    isRunning = false
+                    runningAction = nil
                     status = PanelStatus(text: "AI request failed: \(error)", isError: true)
                 }
             }
         }
     }
 
-    private func copyPromptToClipboard() {
+    private func copyQuizPrompt(_ feature: AIFeature) {
         let prompt = AIPromptBuilder().makePrompt(feature: feature, quiz: quiz, userInstruction: instruction)
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(prompt, forType: .string)
-        status = PanelStatus(text: "Prompt copied. Run it in your assistant, then Paste Response.", isError: false)
+        status = PanelStatus(text: "\(feature.displayName) prompt copied. Run it in your assistant, then Paste Response.", isError: false)
     }
 
     private func pasteAIResponse() {
@@ -1933,25 +2031,141 @@ struct AIPanel: View {
             status = PanelStatus(text: "Clipboard does not contain text.", isError: true)
             return
         }
-        presentResult(pasted)
+        presentResult(pasted, title: "AI Response")
     }
 
-    private func runFoundationModelsRequest() {
-        isRunning = true
+    /// Runs a quiz-level feature on Apple's on-device model, paging the quiz into
+    /// batches that fit the token limit and stitching the replies into one document.
+    private func runFoundationModelsQuiz(_ feature: AIFeature) {
+        runningAction = quizActionID(feature)
         status = nil
-        let prompt = AIPromptBuilder().makePrompt(feature: feature, quiz: quiz, userInstruction: instruction)
-
+        let batches = quiz.batched(maxCharacters: FoundationModelsRunner.inputCharacterBudget)
+        let instruction = self.instruction
         Task {
-            let result = await FoundationModelsRunner.run(prompt: prompt)
+            var sections: [String] = []
+            var startNumber = 1
+            for (index, batch) in batches.enumerated() {
+                if batches.count > 1 {
+                    await MainActor.run {
+                        status = PanelStatus(text: "Processing batch \(index + 1) of \(batches.count)\u{2026}", isError: false)
+                    }
+                }
+                let prompt = AIPromptBuilder().makePrompt(feature: feature, quiz: batch, userInstruction: instruction)
+                let reply = await FoundationModelsRunner.run(prompt: prompt)
+                let endNumber = startNumber + batch.questions.count - 1
+                if batches.count > 1 {
+                    sections.append("## Questions \(startNumber)\u{2013}\(endNumber)\n\n\(reply)")
+                } else {
+                    sections.append(reply)
+                }
+                startNumber = endNumber + 1
+            }
+            let combined = sections.joined(separator: "\n\n")
             await MainActor.run {
-                isRunning = false
-                presentResult(result)
+                runningAction = nil
+                status = batches.count > 1
+                    ? PanelStatus(text: "Combined \(batches.count) batches into one document.", isError: false)
+                    : nil
+                presentResult(combined, title: feature.displayName)
             }
         }
     }
 
-    private func presentResult(_ markdown: String) {
-        aiResult = AIResultContext(title: feature.displayName, markdown: markdown)
+    // MARK: - Item-level actions
+
+    private func canGenerateDistractors(_ question: QuizQuestion) -> Bool {
+        (question.type == .multipleChoice || question.type == .multipleAnswer)
+            && question.answers.contains { $0.isCorrect }
+    }
+
+    private func reviewSelectedQuestion(_ binding: Binding<QuizQuestion>) {
+        let service = QuestionReviewService()
+        let system = service.systemInstruction
+        let prompt = service.makePrompt(question: binding.wrappedValue, quizTitle: quizTitle)
+        if provider == .copyPaste {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(system + "\n\n" + prompt, forType: .string)
+            status = PanelStatus(text: "Question review prompt copied. Run it, then Paste Response.", isError: false)
+            return
+        }
+        runningAction = "item-review"
+        status = nil
+        let runner = self.runner
+        Task {
+            do {
+                let raw = try await runner.run(system: system, user: prompt)
+                await MainActor.run {
+                    runningAction = nil
+                    presentResult(raw, title: "Question Review")
+                }
+            } catch {
+                await MainActor.run {
+                    runningAction = nil
+                    status = PanelStatus(text: "AI request failed: \(error)", isError: true)
+                }
+            }
+        }
+    }
+
+    private func generateItemDistractors(_ binding: Binding<QuizQuestion>) {
+        guard let correct = binding.wrappedValue.answers.first(where: { $0.isCorrect })?.text,
+              !correct.trimmingCharacters(in: .whitespaces).isEmpty else {
+            status = PanelStatus(text: "Mark a correct answer first so distractors can be contrasted against it.", isError: true)
+            return
+        }
+        let service = QuestionAuthoringService()
+        let stem = HTMLUtilities().plainText(fromHTML: binding.wrappedValue.prompt)
+        let prompt = service.makeDistractorsPrompt(prompt: stem, correctAnswer: correct, count: 3)
+        runItemGeneration(system: service.systemInstruction, user: prompt, temperature: 0.7, id: "item-distractors") { raw in
+            let distractors = service.parseDistractors(raw)
+            guard !distractors.isEmpty else {
+                status = PanelStatus(text: "No distractors were returned. Try again or rephrase the stem.", isError: true)
+                return
+            }
+            binding.wrappedValue.answers.append(contentsOf: distractors.map { QuizAnswer(text: $0, isCorrect: false) })
+            status = PanelStatus(text: "Added \(distractors.count) distractor\(distractors.count == 1 ? "" : "s") to this question.", isError: false)
+        }
+    }
+
+    private func generateItemFeedback(_ binding: Binding<QuizQuestion>) {
+        let service = QuestionAuthoringService()
+        let prompt = service.makeFeedbackPrompt(question: binding.wrappedValue, quizTitle: quizTitle)
+        runItemGeneration(system: service.systemInstruction, user: prompt, temperature: 0.4, id: "item-feedback") { raw in
+            guard let feedback = service.parseFeedback(raw) else {
+                status = PanelStatus(text: "No feedback was returned.", isError: true)
+                return
+            }
+            binding.wrappedValue.feedback = feedback
+            status = PanelStatus(text: "Feedback added to this question.", isError: false)
+        }
+    }
+
+    private func runItemGeneration(system: String, user: String, temperature: Double, id: String, apply: @escaping (String) -> Void) {
+        guard runner.supportsAutoRun else {
+            status = PanelStatus(text: "Switch to the API or Apple Foundation Models provider to generate here, or use Author with AI for copy and paste.", isError: true)
+            return
+        }
+        runningAction = id
+        status = nil
+        let runner = self.runner
+        Task {
+            do {
+                let raw = try await runner.run(system: system, user: user, temperature: temperature)
+                await MainActor.run {
+                    runningAction = nil
+                    apply(raw)
+                }
+            } catch {
+                await MainActor.run {
+                    runningAction = nil
+                    status = PanelStatus(text: "AI request failed: \(error)", isError: true)
+                }
+            }
+        }
+    }
+
+    private func presentResult(_ markdown: String, title: String) {
+        aiResult = AIResultContext(title: title, markdown: markdown)
     }
 }
 
@@ -2016,6 +2230,13 @@ struct AISettingsSheet: View {
 
 
 enum FoundationModelsRunner {
+    /// Apple Foundation Models cap a request at roughly 4096 tokens shared between
+    /// the prompt and the reply. Estimating about four characters per token, this
+    /// budget keeps a batch of quiz text near 1000 tokens so there is ample room
+    /// left for the model's response. Quiz-level tools page the quiz into batches
+    /// of this size; see `Quiz.batched(maxCharacters:)`.
+    static let inputCharacterBudget = 4000
+
     static func run(prompt: String) async -> String {
         #if canImport(FoundationModels)
         if #available(macOS 26.0, *) {
@@ -2066,7 +2287,14 @@ struct ImportSheet: View {
                 }
             }
 
-            LabeledTextEditor(title: "Marked quiz text", text: $importText, minHeight: 360)
+            LabeledTextEditor(
+                title: "Marked quiz text",
+                text: $importText,
+                minHeight: 320,
+                placeholder: "Paste or type your questions here. See the formatting guide below for the syntax."
+            )
+
+            MarkedTextFormatReference()
 
             HStack {
                 Spacer()
@@ -2075,10 +2303,58 @@ struct ImportSheet: View {
                 Button("Import") { onImport(importText) }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
+                    .disabled(importText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
         .padding(24)
         .frame(minWidth: 720, minHeight: 620)
+    }
+}
+
+/// A collapsible guide to the marked-text syntax, with a worked example. Shown in
+/// the import sheet so the field itself can start empty instead of pre-filled with
+/// sample text that could be imported by accident.
+struct MarkedTextFormatReference: View {
+    @State private var isExpanded = false
+
+    var body: some View {
+        DisclosureGroup(isExpanded: $isExpanded) {
+            VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    rule("`Title:` names the quiz (optional, once at the top).")
+                    rule("`Type:` starts a question, e.g. Multiple Choice, True/False, Short Answer.")
+                    rule("`Question:` the prompt text.")
+                    rule("`*` marks a correct answer; `-` marks a distractor.")
+                    rule("`Term => Match` pairs an item for matching questions.")
+                    rule("`Feedback:` optional explanation shown after answering.")
+                }
+
+                Text("Example")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text(sampleImportText)
+                    .font(.callout.monospaced())
+                    .textSelection(.enabled)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(nsColor: .textBackgroundColor))
+                    .clipShape(.rect(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.25)))
+            }
+            .padding(.top, 8)
+        } label: {
+            Label("Formatting guide", systemImage: "text.book.closed")
+                .font(.subheadline.weight(.semibold))
+        }
+    }
+
+    /// Renders one syntax rule from a Markdown string; inline `code` spans render
+    /// monospaced, which avoids the deprecated `Text` + `Text` concatenation.
+    private func rule(_ markdown: LocalizedStringKey) -> some View {
+        Text(markdown)
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -2106,25 +2382,42 @@ struct LabeledTextEditor: View {
     let title: String
     @Binding var text: String
     let minHeight: CGFloat
+    /// Optional grey prompt shown only while the field is empty. It is not part of
+    /// the text, so it can never be submitted or imported by mistake.
+    var placeholder: String? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            TextEditor(text: $text)
-                .font(.body)
-                .scrollContentBackground(.hidden)
-                .autocorrectionDisabled(false)
-                .padding(8)
-                .frame(minHeight: minHeight)
-                .background(Color(nsColor: .textBackgroundColor))
-                .clipShape(.rect(cornerRadius: 8))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color.secondary.opacity(0.25))
-                )
-                .accessibilityLabel(title)
+            ZStack(alignment: .topLeading) {
+                TextEditor(text: $text)
+                    .font(.body)
+                    .scrollContentBackground(.hidden)
+                    .autocorrectionDisabled(false)
+                    .padding(8)
+                    .frame(minHeight: minHeight)
+                    .background(Color(nsColor: .textBackgroundColor))
+                    .clipShape(.rect(cornerRadius: 8))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.secondary.opacity(0.25))
+                    )
+                    .accessibilityLabel(title)
+
+                // Drawn on top so it shows over the editor's opaque background;
+                // hit testing is disabled so clicks fall through to the editor.
+                if let placeholder, text.isEmpty {
+                    Text(placeholder)
+                        .font(.body)
+                        .foregroundStyle(.tertiary)
+                        .padding(.horizontal, 13)
+                        .padding(.vertical, 16)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
+            }
         }
     }
 }

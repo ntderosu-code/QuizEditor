@@ -1,37 +1,63 @@
 import SwiftUI
 import QuizEditorCore
 
-/// Edits a question's organizational metadata: points, difficulty, and tags.
+/// Edits the question's core attributes in a single compact row: type, points,
+/// and difficulty. Tags live separately in `QuestionTagsEditor`, since they are an
+/// organizational convenience rather than part of the question itself.
 struct QuestionMetadataEditor: View {
     @Binding var question: QuizQuestion
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 20) {
-                LabeledField("Points") {
-                    TextField("Points", value: $question.points, format: .number)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 80)
-                }
-
-                LabeledField("Difficulty") {
-                    Picker("Difficulty", selection: $question.difficulty) {
-                        Text("Unspecified").tag(QuizDifficulty?.none)
-                        ForEach(QuizDifficulty.allCases) { difficulty in
-                            Text(difficulty.displayName).tag(QuizDifficulty?.some(difficulty))
-                        }
+        HStack(alignment: .top, spacing: 20) {
+            LabeledField("Type") {
+                Picker("Type", selection: $question.type) {
+                    ForEach(QuizQuestionType.allCases) { type in
+                        Text(type.displayName).tag(type)
                     }
-                    .labelsHidden()
-                    .fixedSize()
                 }
-
-                Spacer()
+                .labelsHidden()
+                .fixedSize()
             }
 
+            LabeledField("Points") {
+                TextField("Points", value: $question.points, format: .number)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 70)
+            }
+
+            LabeledField("Difficulty") {
+                Picker("Difficulty", selection: $question.difficulty) {
+                    Text("Unspecified").tag(QuizDifficulty?.none)
+                    ForEach(QuizDifficulty.allCases) { difficulty in
+                        Text(difficulty.displayName).tag(QuizDifficulty?.some(difficulty))
+                    }
+                }
+                .labelsHidden()
+                .fixedSize()
+            }
+
+            Spacer()
+        }
+    }
+}
+
+/// Edits the question's organizational tags. Kept apart from the question's core
+/// attributes because tags are for the author's own filing, not part of the QTI
+/// standard, and are never written into an export.
+struct QuestionTagsEditor: View {
+    @Binding var question: QuizQuestion
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
             LabeledField("Tags") {
                 TextField("comma, separated, tags", text: tagsBinding)
                     .textFieldStyle(.roundedBorder)
             }
+
+            Text("Tags help you find and filter questions while you work. They are not part of the QTI standard and are not exported.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
 
             if !question.tags.isEmpty {
                 // Chips reflow to fit the available width.
