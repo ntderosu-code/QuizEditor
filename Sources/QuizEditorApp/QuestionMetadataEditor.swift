@@ -1,42 +1,55 @@
 import SwiftUI
 import QuizEditorCore
 
-/// Edits the question's core attributes in a single compact row: type, points,
-/// and difficulty. Tags live separately in `QuestionTagsEditor`, since they are an
-/// organizational convenience rather than part of the question itself.
-struct QuestionMetadataEditor: View {
+/// Edits the question type as the first authoring decision.
+struct QuestionTypeEditor: View {
     @Binding var question: QuizQuestion
 
     var body: some View {
-        HStack(alignment: .top, spacing: 20) {
-            LabeledField("Type") {
-                Picker("Type", selection: $question.type) {
-                    ForEach(QuizQuestionType.allCases) { type in
-                        Text(type.displayName).tag(type)
-                    }
+        LabeledField("Question type") {
+            Picker("Question type", selection: $question.type) {
+                ForEach(QuizQuestionType.allCases) { type in
+                    Text(type.displayName).tag(type)
                 }
-                .labelsHidden()
-                .fixedSize()
             }
+            .labelsHidden()
+            .fixedSize()
+        }
+    }
+}
 
-            LabeledField("Points") {
-                TextField("Points", value: $question.points, format: .number)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 70)
-            }
+/// Secondary question details. Kept below the writing fields so points,
+/// difficulty, and tags do not compete with the authoring path.
+struct QuestionDetailsEditor: View {
+    @Binding var question: QuizQuestion
 
-            LabeledField("Difficulty") {
-                Picker("Difficulty", selection: $question.difficulty) {
-                    Text("Unspecified").tag(QuizDifficulty?.none)
-                    ForEach(QuizDifficulty.allCases) { difficulty in
-                        Text(difficulty.displayName).tag(QuizDifficulty?.some(difficulty))
+    var body: some View {
+        DisclosureGroup("Question details") {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .top, spacing: 20) {
+                    LabeledField("Points") {
+                        TextField("Points", value: $question.points, format: .number)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 70)
                     }
-                }
-                .labelsHidden()
-                .fixedSize()
-            }
 
-            Spacer()
+                    LabeledField("Difficulty") {
+                        Picker("Difficulty", selection: $question.difficulty) {
+                            Text("Unspecified").tag(QuizDifficulty?.none)
+                            ForEach(QuizDifficulty.allCases) { difficulty in
+                                Text(difficulty.displayName).tag(QuizDifficulty?.some(difficulty))
+                            }
+                        }
+                        .labelsHidden()
+                        .fixedSize()
+                    }
+
+                    Spacer()
+                }
+
+                QuestionTagsEditor(question: $question)
+            }
+            .padding(.top, 8)
         }
     }
 }

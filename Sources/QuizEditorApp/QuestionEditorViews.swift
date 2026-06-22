@@ -7,19 +7,20 @@ import QuizEditorCore
 import FoundationModels
 #endif
 
+enum QuestionEditorSection: CaseIterable, Hashable {
+    case type, stem, answer, feedback, checks, details
+
+    static let defaultOrder: [QuestionEditorSection] = [.type, .stem, .answer, .feedback, .checks, .details]
+}
+
 struct QuestionEditor: View {
     @Binding var question: QuizQuestion
     let quizTitle: String
     let questionNumber: Int
     let questionTotal: Int
-    /// The quiz's reusable linking entities (issue #23), so this question can link
-    /// to and create objectives, sources, and a shared stimulus.
-    @Binding var objectives: [LearningObjective]
-    @Binding var sources: [Source]
-    @Binding var stimuli: [Stimulus]
-    /// The competency frameworks, for the linking section's competency picker and
-    /// for feeding competency labels to the AI.
-    var frameworks: [Framework] = []
+    /// Resolved author metadata from saved links. The editor no longer exposes
+    /// linking controls, but older files may still carry this context for AI.
+    var linkedContext: PromptLinkContext = .empty
     /// The active persona, so the inline item-writing checks reflect the discipline.
     var persona: Persona = .general
     /// Opens the formatted preview for this question (owned by ContentView).
@@ -55,59 +56,42 @@ struct QuestionEditor: View {
         )
     }
 
-    /// This question's links resolved into the quiz's actual entities, fed to the
-    /// AI so it reviews the whole item (stimulus, sources, objectives).
-    private var linkedContext: PromptLinkContext {
-        PromptLinkContext(
-            stimulus: question.stimulusID.flatMap { id in stimuli.first { $0.id == id } },
-            sources: question.sourceIDs.compactMap { id in sources.first { $0.id == id } },
-            objectives: question.objectiveIDs.compactMap { id in objectives.first { $0.id == id } },
-            competencies: question.competencyIDs.compactMap { id in
-                frameworks.lazy.compactMap { $0.node(withID: id)?.displayLabel }.first
-            }
-        )
-    }
-
     var body: some View {
         VStack(spacing: 0) {
             stickyHeader
             Divider()
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    // Only when something is unmet — when the question is ready the
-                    // header badge already says so, so the panel would be redundant.
+                    QuestionTypeEditor(question: $question)
+
+                    RichTextField(title: "Question stem", text: $question.prompt, minHeight: 96)
+
+                    if let reviewError {
+                        aiMessageBox(reviewError, title: AppCopy.aiSuggestions) { self.reviewError = nil }
+                    }
+
+                    if let generationError {
+                        aiMessageBox(generationError, title: "AI Tools") { self.generationError = nil }
+                    }
+
+                    if question.type == .matching {
+                        MatchingEditor(matches: $question.matches)
+                    } else if question.type == .numeric {
+                        NumericAnswerEditor(numeric: numericBinding)
+                    } else if question.type != .essay {
+                        AnswerEditor(question: $question)
+                    }
+
+                    feedbackSection
+
                     let readiness = QuestionReadiness(question: question)
                     if readiness.status != .ready {
                         QuestionReadinessView(readiness: readiness)
                     }
 
-                    QuestionMetadataEditor(question: $question)
+                    LintFindingsSection(findings: findings)
 
-                if let reviewError {
-                    aiMessageBox(reviewError, title: "AI Review") { self.reviewError = nil }
-                }
-
-                if let generationError {
-                    aiMessageBox(generationError, title: "AI Tools") { self.generationError = nil }
-                }
-
-                LintFindingsSection(findings: findings)
-
-                RichTextField(title: "Question stem", text: $question.prompt, minHeight: 96)
-
-                if question.type == .matching {
-                    MatchingEditor(matches: $question.matches)
-                } else if question.type == .numeric {
-                    NumericAnswerEditor(numeric: numericBinding)
-                } else if question.type != .essay {
-                    AnswerEditor(question: $question)
-                }
-
-                feedbackSection
-
-                Divider()
-
-                    QuestionTagsEditor(question: $question)
+                    QuestionDetailsEditor(question: $question)
                 }
                 .padding(24)
             }
@@ -121,7 +105,7 @@ struct QuestionEditor: View {
     // MARK: - Sticky header
 
     /// A compact, non-scrolling header: question position, type, readiness badge,
-    /// and exactly one prominent question-level AI action (Review question).
+    /// and exactly one prominent question-level AI action (Review with AI).
     /// Preview and secondary/field actions live alongside it (an overflow menu)
     /// rather than as competing top-level buttons.
     private var stickyHeader: some View {
@@ -160,19 +144,19 @@ struct QuestionEditor: View {
                         Text("Reviewing…")
                     }
                 } else {
-                    Label("Review question", systemImage: "sparkles")
+                    Label("Review with AI", systemImage: "sparkles")
                 }
             }
             .disabled(isReviewing)
             .buttonStyle(.glassProminent)
             .foregroundStyle(.white)
             .fixedSize()
-            .help("Review this question for item-writing quality and apply suggested edits")
+            .help("Ask AI to review this question and offer suggested edits")
 
             Menu {
-                Button("Generate Distractors") { generateDistractors() }
+                Button("Suggest Distractors") { generateDistractors() }
                     .disabled(!canGenerateDistractors)
-                Button("Generate Feedback") { generateFeedback() }
+                Button("Draft Feedback") { generateFeedback() }
                 if undoSnapshot != nil {
                     Divider()
                     Button("Undo AI Changes") { undoAIChanges() }
@@ -187,7 +171,7 @@ struct QuestionEditor: View {
             .labelStyle(.iconOnly)
             .imageScale(.large)
             .fixedSize()
-            .help("Generate distractors or feedback, undo AI edits, or delete this question")
+            .help("Suggest distractors, draft feedback, undo AI edits, or delete this question")
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 12)
@@ -309,7 +293,7 @@ struct QuestionEditor: View {
     private func runGeneration(perform: @escaping () async throws -> String, apply: @escaping (String) -> Void) {
         generationError = nil
         guard runner.supportsAutoRun else {
-            generationError = "Switch to the API or Apple Foundation Models provider to generate here, or use Author with AI for copy/paste."
+            generationError = "Switch to the API or Apple Foundation Models provider to generate here, or use Draft with AI for copy/paste."
             return
         }
         isGenerating = true
@@ -374,7 +358,7 @@ struct QuestionReviewSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 4) {
-                Label("AI Review", systemImage: "sparkles")
+                Label(AppCopy.aiSuggestions, systemImage: "sparkles")
                     .font(.title2.bold())
                 Text(original.prompt.isEmpty ? "Untitled question" : original.prompt)
                     .font(.callout)
@@ -684,4 +668,3 @@ struct MatchingEditor: View {
         }
     }
 }
-

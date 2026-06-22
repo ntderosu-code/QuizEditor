@@ -49,7 +49,7 @@ struct LintFindingsSection: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             } label: {
-                Label("Item-writing checks", systemImage: "checklist")
+                Label(AppCopy.offlineChecks, systemImage: "checklist")
             }
         }
     }
@@ -105,7 +105,7 @@ struct QuizLintSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Label("Quality Check", systemImage: "checklist")
+                Label(AppCopy.checkQuiz, systemImage: "checklist")
                     .font(.title2.bold())
                 Spacer()
                 Button("Done") { dismiss() }
@@ -125,7 +125,7 @@ struct QuizLintSheet: View {
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("\(flagged.count) of \(quiz.questions.count) question\(quiz.questions.count == 1 ? "" : "s") have suggestions. These never block saving or export.")
+                        Text("\(flagged.count) of \(quiz.questions.count) question\(quiz.questions.count == 1 ? "" : "s") have offline suggestions. These never block saving or export.")
                             .font(.callout)
                             .foregroundStyle(.secondary)
 

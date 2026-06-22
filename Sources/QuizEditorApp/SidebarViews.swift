@@ -127,10 +127,10 @@ struct SidebarView: View {
                     Button("Merge from File…") { onMergeFromFile() }
                     Button("Question Bank…") { onOpenBank() }
                 } label: {
-                    Label("Add", systemImage: "square.and.arrow.down")
+                    Label("Import", systemImage: "square.and.arrow.down")
                 }
                 .menuIndicator(.hidden)
-                .help("Import or add questions: marked text, a QTI .zip, Common Cartridge, a merge, or the question bank")
+                .help("Import questions from marked text, a QTI .zip, Common Cartridge, another file, or the question bank")
             }
         }
     }
@@ -298,4 +298,3 @@ struct SidebarQuestionRow: View {
         return label
     }
 }
-

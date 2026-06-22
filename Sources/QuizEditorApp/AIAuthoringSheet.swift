@@ -43,7 +43,7 @@ struct AIAuthoringSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Author with AI")
+            Text("Draft with AI")
                 .font(.title2.bold())
                 .padding(20)
 

@@ -221,7 +221,7 @@ struct QuizReviewSheet: View {
     /// Reviews one page of questions in a single request. Provider-specific and
     /// injected by the caller so this sheet stays provider-agnostic.
     let loadBatch: ([QuizQuestion]) async throws -> [QuestionReview]
-    /// Window title for this run (Review Quiz, Suggested Revisions, Drafted Feedback).
+    /// Window title for this run, such as Review Quiz with AI or Drafted Feedback.
     var title: String = "Quiz Review"
     /// Which parts of each question's result to show; passed through to the detail.
     var focus: ReviewFocus = .full

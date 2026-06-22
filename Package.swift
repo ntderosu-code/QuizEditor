@@ -11,6 +11,7 @@ let package = Package(
     targets: [
         .target(name: "QuizEditorCore"),
         .executableTarget(name: "QuizEditorApp", dependencies: ["QuizEditorCore"]),
-        .testTarget(name: "QuizEditorCoreTests", dependencies: ["QuizEditorCore"])
+        .testTarget(name: "QuizEditorCoreTests", dependencies: ["QuizEditorCore"]),
+        .testTarget(name: "QuizEditorAppTests", dependencies: ["QuizEditorApp"])
     ]
 )

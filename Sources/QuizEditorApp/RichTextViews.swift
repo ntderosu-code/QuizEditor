@@ -120,6 +120,33 @@ struct RichTextEditor: NSViewRepresentable {
 }
 
 /// WYSIWYG rich text field with a formatting toolbar and enforced image alt text.
+enum RichTextToolbarMetrics {
+    static let buttonMinWidth: CGFloat = 32
+    static let buttonMinHeight: CGFloat = 30
+}
+
+enum RichTextInsertAction: String, CaseIterable, Identifiable {
+    case link, table, image
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .link: "Link"
+        case .table: "Table"
+        case .image: "Image"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .link: "link"
+        case .table: "tablecells"
+        case .image: "photo"
+        }
+    }
+}
+
 struct RichTextField: View {
     let title: String
     @Binding var text: String
@@ -178,14 +205,7 @@ struct RichTextField: View {
             toolbarButton("Numbered list", systemImage: "list.number") { controller.exec("insertOrderedList") }
 
             toolbarDivider
-
-            toolbarButton("Link", systemImage: "link") {
-                controller.insertHTML("<a href=\"https://\">link text</a>")
-            }
-            toolbarButton("Table", systemImage: "tablecells") {
-                controller.insertHTML("<table><tr><th>Header 1</th><th>Header 2</th></tr><tr><td>Cell</td><td>Cell</td></tr></table>")
-            }
-            toolbarButton("Insert image", systemImage: "photo") { isImageSheetPresented = true }
+            insertMenu
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
@@ -197,16 +217,45 @@ struct RichTextField: View {
         Divider().frame(height: 16)
     }
 
+    private var insertMenu: some View {
+        Menu {
+            ForEach(RichTextInsertAction.allCases) { action in
+                Button {
+                    performInsert(action)
+                } label: {
+                    Label(action.title, systemImage: action.systemImage)
+                }
+            }
+        } label: {
+            Label("Insert", systemImage: "plus.circle")
+        }
+        .menuStyle(.button)
+        .fixedSize()
+        .help("Insert a link, table, or image")
+        .accessibilityLabel("Insert content")
+    }
+
     private func toolbarButton(_ label: String, systemImage: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemImage)
                 .imageScale(.large)
-                .frame(minWidth: 26, minHeight: 24)
+                .frame(minWidth: RichTextToolbarMetrics.buttonMinWidth, minHeight: RichTextToolbarMetrics.buttonMinHeight)
                 .contentShape(.rect)
         }
         .buttonStyle(.borderless)
         .help(label)
         .accessibilityLabel(label)
+    }
+
+    private func performInsert(_ action: RichTextInsertAction) {
+        switch action {
+        case .link:
+            controller.insertHTML("<a href=\"https://\">link text</a>")
+        case .table:
+            controller.insertHTML("<table><tr><th>Header 1</th><th>Header 2</th></tr><tr><td>Cell</td><td>Cell</td></tr></table>")
+        case .image:
+            isImageSheetPresented = true
+        }
     }
 }
 

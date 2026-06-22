@@ -17,10 +17,7 @@ extension ContentView {
                 quizTitle: quiz.title,
                 questionNumber: selectedIndex + 1,
                 questionTotal: quiz.questions.count,
-                objectives: $quiz.objectives,
-                sources: $quiz.sources,
-                stimuli: $quiz.stimuli,
-                frameworks: frameworkStore.frameworks,
+                linkedContext: quiz.promptLinkContext(for: quiz.questions[selectedIndex], frameworks: frameworkStore.frameworks),
                 persona: activePersona,
                 onPreview: {
                     previewScopedToQuestion = true
@@ -452,15 +449,4 @@ extension ContentView {
         }
     }
 
-    func checkSpelling() {
-        NSApp.sendAction(#selector(NSText.checkSpelling(_:)), to: nil, from: nil)
-    }
-
-    func showSpellingPanel() {
-        NSApp.sendAction(#selector(NSText.showGuessPanel(_:)), to: nil, from: nil)
-    }
-
-    func toggleContinuousSpellChecking() {
-        NSApp.sendAction(#selector(NSTextView.toggleContinuousSpellChecking(_:)), to: nil, from: nil)
-    }
 }

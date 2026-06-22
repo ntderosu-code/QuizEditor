@@ -7,6 +7,29 @@ import QuizEditorCore
 import FoundationModels
 #endif
 
+enum AIPanelScope: String, CaseIterable, Identifiable {
+    case wholeQuiz
+    case currentQuestion
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .wholeQuiz: "Whole quiz"
+        case .currentQuestion: "Current question"
+        }
+    }
+
+    func sectionTitle(selectedQuestionNumber: Int?) -> String {
+        switch self {
+        case .wholeQuiz:
+            title
+        case .currentQuestion:
+            selectedQuestionNumber.map { "Question \($0)" } ?? title
+        }
+    }
+}
+
 struct AIPanel: View {
     @Binding var quiz: Quiz
     let quizTitle: String
@@ -15,7 +38,7 @@ struct AIPanel: View {
     let selectedQuestion: Binding<QuizQuestion>?
     /// 1-based position of the selected question, for the section heading.
     let selectedQuestionNumber: Int?
-    /// Opens the full Author with AI sheet, which ContentView owns.
+    /// Opens the full Draft with AI sheet, which ContentView owns.
     let onAuthorWithAI: () -> Void
     /// The active persona, so AI prompts carry its preamble, guidelines, safety
     /// clauses, and temperature.
@@ -41,6 +64,7 @@ struct AIPanel: View {
     /// The selected question as it was when its review started — the diff "before".
     @State private var reviewOriginal: QuizQuestion?
     @State private var status: PanelStatus?
+    @State private var selectedScope = AIPanelScope.wholeQuiz
 
     private var isRunning: Bool { runningAction != nil }
 
@@ -63,9 +87,10 @@ struct AIPanel: View {
                 header
                 providerSection
                 instructionSection
-                quizToolsSection
-                if let selectedQuestion {
-                    itemToolsSection(selectedQuestion)
+                scopePicker
+                scopedToolsSection
+                if provider == .copyPaste {
+                    pasteResponseButton
                 }
                 if let status {
                     Label(status.text, systemImage: status.isError ? "exclamationmark.triangle.fill" : "info.circle")
@@ -111,12 +136,16 @@ struct AIPanel: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("AI Assistant")
+            Text(AppCopy.aiSuggestions)
                 .font(.title2.bold())
-            Text("Improve your quiz with an API, Apple's on-device models, or copy and paste to another assistant.")
+            Text("Use AI to suggest edits, draft feedback, or write new questions.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+            Label("Review profile: \(persona.displayName)", systemImage: "person.crop.rectangle")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .accessibilityElement(children: .combine)
         }
     }
 
@@ -164,25 +193,44 @@ struct AIPanel: View {
         }
     }
 
+    private var scopePicker: some View {
+        Picker("AI action scope", selection: $selectedScope) {
+            ForEach(AIPanelScope.allCases) { scope in
+                Text(scope.title).tag(scope)
+            }
+        }
+        .pickerStyle(.segmented)
+        .accessibilityLabel("AI action scope")
+    }
+
+    @ViewBuilder
+    private var scopedToolsSection: some View {
+        switch selectedScope {
+        case .wholeQuiz:
+            quizToolsSection
+        case .currentQuestion:
+            if let selectedQuestion {
+                itemToolsSection(selectedQuestion)
+            } else {
+                noQuestionSelectedSection
+            }
+        }
+    }
+
     private var quizToolsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            sectionHeader("Whole quiz")
-            toolButton("Review Quiz", systemImage: "sparkles", id: quizActionID(.review)) {
+            sectionHeader(AIPanelScope.wholeQuiz.sectionTitle(selectedQuestionNumber: selectedQuestionNumber))
+            toolButton("Review Quiz with AI", systemImage: "sparkles", id: quizActionID(.review)) {
                 runQuizFeature(.review)
             }
             toolButton("Suggest Revisions", systemImage: "pencil.and.outline", id: quizActionID(.revise)) {
                 runQuizFeature(.revise)
             }
-            toolButton("Draft Feedback", systemImage: "text.bubble", id: quizActionID(.generateFeedback)) {
+            toolButton("Draft Student Feedback", systemImage: "text.bubble", id: quizActionID(.generateFeedback)) {
                 runQuizFeature(.generateFeedback)
             }
             toolButton("Author New Questions…", systemImage: "plus.square.on.square", id: "author", action: onAuthorWithAI)
 
-            if provider == .copyPaste {
-                Button("Paste Response", action: pasteAIResponse)
-                    .buttonStyle(.glass)
-                    .disabled(isRunning)
-            }
             if provider == .foundationModels {
                 Text("Large quizzes run in batches to fit Apple's on-device limit, then combine into one document.")
                     .font(.caption)
@@ -195,18 +243,35 @@ struct AIPanel: View {
     @ViewBuilder
     private func itemToolsSection(_ binding: Binding<QuizQuestion>) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Divider().padding(.vertical, 2)
-            sectionHeader(selectedQuestionNumber.map { "Question \($0)" } ?? "Selected question")
-            toolButton("Review This Question", systemImage: "sparkles", id: "item-review") {
+            sectionHeader(AIPanelScope.currentQuestion.sectionTitle(selectedQuestionNumber: selectedQuestionNumber))
+            toolButton("Review This Question with AI", systemImage: "sparkles", id: "item-review") {
                 reviewSelectedQuestion(binding)
             }
-            toolButton("Generate Distractors", systemImage: "rectangle.stack.badge.plus", id: "item-distractors", disabled: !canGenerateDistractors(binding.wrappedValue)) {
+            toolButton("Suggest Distractors", systemImage: "rectangle.stack.badge.plus", id: "item-distractors", disabled: !canGenerateDistractors(binding.wrappedValue)) {
                 generateItemDistractors(binding)
             }
-            toolButton("Generate Feedback", systemImage: "text.bubble", id: "item-feedback") {
+            toolButton("Draft Feedback", systemImage: "text.bubble", id: "item-feedback") {
                 generateItemFeedback(binding)
             }
         }
+    }
+
+    private var noQuestionSelectedSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            sectionHeader(AIPanelScope.currentQuestion.sectionTitle(selectedQuestionNumber: nil))
+            Label("Select a question in the sidebar to use question-level AI tools.", systemImage: "questionmark.circle")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityElement(children: .combine)
+        }
+    }
+
+    private var pasteResponseButton: some View {
+        Button("Paste Response", action: pasteAIResponse)
+            .buttonStyle(.glass)
+            .disabled(isRunning)
+            .help("Paste a response copied from another assistant")
     }
 
     private func sectionHeader(_ title: String) -> some View {
@@ -258,7 +323,7 @@ struct AIPanel: View {
     private func quizActionID(_ feature: AIFeature) -> String { "quiz-\(feature.rawValue)" }
 
     private func runQuizFeature(_ feature: AIFeature) {
-        // Review, Suggest Revisions, and Draft Feedback all open the paginated,
+        // Review with AI, Suggest Revisions, and Draft Feedback all open the paginated,
         // applyable sheet for the auto-run providers, so every quiz-level tool
         // writes its result back into the quiz. Copy-paste still copies a prompt.
         if let mode = QuizReviewMode(feature: feature) {
@@ -298,10 +363,10 @@ struct AIPanel: View {
         }
     }
 
-    /// Builds the per-page loader for the Draft Feedback tool. Each question on a
+    /// Builds the per-page loader for the Draft Student Feedback tool. Each question on a
     /// page is given freshly drafted feedback (sequentially, so the on-device model
     /// handles one request at a time); the result is shown as a per-question diff
-    /// with Apply, reusing the same sheet as Review Quiz.
+    /// with Apply, reusing the same sheet as Review Quiz with AI.
     private func makeFeedbackBatchLoader() -> ([QuizQuestion]) async throws -> [QuestionReview] {
         let service = QuestionAuthoringService()
         let runner = self.runner
@@ -425,7 +490,7 @@ struct AIPanel: View {
 
     private func runItemGeneration(id: String, perform: @escaping () async throws -> String, apply: @escaping (String) -> Void) {
         guard runner.supportsAutoRun else {
-            status = PanelStatus(text: "Switch to the API or Apple Foundation Models provider to generate here, or use Author with AI for copy and paste.", isError: true)
+            status = PanelStatus(text: "Switch to the API or Apple Foundation Models provider to generate here, or use Draft with AI for copy and paste.", isError: true)
             return
         }
         runningAction = id
@@ -544,4 +609,3 @@ enum QuizReviewMode: String, Identifiable {
         }
     }
 }
-

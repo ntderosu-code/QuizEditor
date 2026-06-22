@@ -198,7 +198,7 @@ struct ContentView: View {
 
     /// The persona in effect for this quiz: its own override, else the app default,
     /// else General. The linter reads it so inline lint, the sidebar status dot,
-    /// and Quality Check all reflect the active discipline.
+    /// and Check Quiz all reflect the active discipline.
     var activePersona: Persona {
         personaStore.resolve(quiz.personaID ?? appDefaultPersonaID)
     }
@@ -314,60 +314,52 @@ struct ContentView: View {
                 Button {
                     isAuthoringPresented = true
                 } label: {
-                    Label("Author with AI", systemImage: "sparkles")
+                    Label("Draft with AI", systemImage: "sparkles")
                 }
                 .help("Generate new questions from a topic or learning objective")
 
-                Button {
-                    isLintSheetPresented = true
-                } label: {
-                    Label("Quality Check", systemImage: "checklist")
-                }
-                .help("Check the whole quiz for item-writing issues: clarity, answer keys, accessibility, and LMS import readiness")
-
                 Menu {
-                    Picker("Persona", selection: $quiz.personaID) {
-                        Text("App Default (\(personaStore.resolve(appDefaultPersonaID).displayName))")
-                            .tag(String?.none)
-                        ForEach(personaStore.personas) { persona in
-                            Text(persona.displayName).tag(Optional(persona.id))
-                        }
+                    Button(AppCopy.checkQuiz) {
+                        isLintSheetPresented = true
                     }
-                    .pickerStyle(.inline)
+
+                    Divider()
+
+                    Section("Review Profile") {
+                        Picker("Review Profile", selection: $quiz.personaID) {
+                            Text("App Default (\(personaStore.resolve(appDefaultPersonaID).displayName))")
+                                .tag(String?.none)
+                            ForEach(personaStore.personas) { persona in
+                                Text(persona.displayName).tag(Optional(persona.id))
+                            }
+                        }
+                        .pickerStyle(.inline)
+                    }
 
                     Divider()
 
                     Button {
                         isPersonaSheetPresented = true
                     } label: {
-                        Label("Manage Personas…", systemImage: "slider.horizontal.3")
+                        Label("Manage Review Profiles…", systemImage: "slider.horizontal.3")
                     }
                     .keyboardShortcut("p", modifiers: [.command, .option])
                 } label: {
-                    Label("Persona: \(activePersona.displayName)", systemImage: "person.crop.rectangle")
+                    Label(AppCopy.checkQuiz, systemImage: "checklist")
+                } primaryAction: {
+                    isLintSheetPresented = true
                 }
-                .menuIndicator(.hidden)
-                .help("Choose the discipline persona for this quiz (⌥⌘P to manage)")
-
-                Menu {
-                    Button("Check Spelling", action: checkSpelling)
-                    Button("Show Spelling and Grammar", action: showSpellingPanel)
-                    Button("Toggle Check Spelling While Typing", action: toggleContinuousSpellChecking)
-                } label: {
-                    Label("Spelling", systemImage: "text.magnifyingglass")
-                }
-                .menuIndicator(.hidden)
-                .help("Spelling and grammar tools")
+                .help("Run offline checks for clarity, answer keys, accessibility, and LMS import readiness")
             }
 
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     isAIPanelVisible.toggle()
                 } label: {
-                    Label("AI Assistant", systemImage: isAIPanelVisible ? "sidebar.trailing" : "sidebar.right")
+                    Label(AppCopy.aiSuggestions, systemImage: isAIPanelVisible ? "sidebar.trailing" : "sidebar.right")
                 }
                 .keyboardShortcut("a", modifiers: [.command, .option])
-                .help(isAIPanelVisible ? "Hide the AI Assistant panel (⌥⌘A)" : "Show the AI Assistant panel (⌥⌘A)")
+                .help(isAIPanelVisible ? "Hide the AI Suggestions panel (⌥⌘A)" : "Show the AI Suggestions panel (⌥⌘A)")
             }
         }
         .onAppear {
