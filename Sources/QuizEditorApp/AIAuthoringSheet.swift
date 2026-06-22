@@ -5,6 +5,9 @@ import QuizEditorCore
 /// configured AI provider, then lets the user accept any subset for insertion.
 struct AIAuthoringSheet: View {
     let quizTitle: String
+    /// The active persona, so authoring prompts carry its preamble, guidelines,
+    /// distractor strategy, and exemplars.
+    var persona: Persona = .general
     let onAdd: ([QuizQuestion]) -> Void
     @Environment(\.dismiss) private var dismiss
 
@@ -117,6 +120,29 @@ struct AIAuthoringSheet: View {
                     .textFieldStyle(.roundedBorder)
             }
 
+            if !persona.exemplars.isEmpty {
+                GroupBox {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(Array(persona.exemplars.enumerated()), id: \.offset) { _, exemplar in
+                            Label {
+                                Text(exemplar)
+                                    .font(.caption)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            } icon: {
+                                Image(systemName: "star")
+                                    .foregroundStyle(.secondary)
+                                    .accessibilityHidden(true)
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(4)
+                } label: {
+                    Label("What a strong \(persona.displayName) item looks like", systemImage: "lightbulb")
+                        .font(.caption)
+                }
+            }
+
             HStack {
                 Button {
                     generate()
@@ -209,19 +235,20 @@ struct AIAuthoringSheet: View {
             topic: topic,
             count: count,
             types: types,
-            additionalInstructions: additional
+            additionalInstructions: additional,
+            persona: persona
         )
 
         if provider == .copyPaste {
             NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(service.systemInstruction + "\n\n" + prompt, forType: .string)
+            NSPasteboard.general.setString(service.systemInstruction(persona: persona) + "\n\n" + prompt, forType: .string)
             errorMessage = nil
             return
         }
 
         isRunning = true
         let runner = self.runner
-        let systemInstruction = service.systemInstruction
+        let systemInstruction = service.systemInstruction(persona: persona)
         Task {
             do {
                 let raw = try await runner.run(system: systemInstruction, user: prompt, temperature: 0.7)

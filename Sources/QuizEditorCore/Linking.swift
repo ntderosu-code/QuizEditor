@@ -200,3 +200,36 @@ public struct Source: Equatable, Codable, Identifiable, Sendable {
         return parts.isEmpty ? "Untitled source" : parts.joined(separator: ", ")
     }
 }
+
+/// The linked entities a question references, resolved into the actual objects so
+/// the AI prompting layer (#21) can feed them to the model: the attached stimulus
+/// text, the cited sources, and the learning objectives. Empty when a question
+/// links nothing — in which case prompts stay byte-identical to today.
+public struct PromptLinkContext: Sendable, Equatable {
+    public var stimulus: Stimulus?
+    public var sources: [Source]
+    public var objectives: [LearningObjective]
+
+    public init(stimulus: Stimulus? = nil, sources: [Source] = [], objectives: [LearningObjective] = []) {
+        self.stimulus = stimulus
+        self.sources = sources
+        self.objectives = objectives
+    }
+
+    public static let empty = PromptLinkContext()
+
+    public var isEmpty: Bool {
+        stimulus == nil && sources.isEmpty && objectives.isEmpty
+    }
+}
+
+public extension Quiz {
+    /// Resolves the linking ids on `question` into the quiz's actual entities for
+    /// use in AI prompts.
+    func promptLinkContext(for question: QuizQuestion) -> PromptLinkContext {
+        let stimulus = question.stimulusID.flatMap { id in stimuli.first { $0.id == id } }
+        let linkedSources = question.sourceIDs.compactMap { id in sources.first { $0.id == id } }
+        let linkedObjectives = question.objectiveIDs.compactMap { id in objectives.first { $0.id == id } }
+        return PromptLinkContext(stimulus: stimulus, sources: linkedSources, objectives: linkedObjectives)
+    }
+}

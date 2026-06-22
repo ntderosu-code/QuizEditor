@@ -254,7 +254,8 @@ struct ContentView: View {
                 quizTitle: quiz.title,
                 selectedQuestion: selectedQuestionBinding,
                 selectedQuestionNumber: selectedQuestionNumber,
-                onAuthorWithAI: { isAuthoringPresented = true }
+                onAuthorWithAI: { isAuthoringPresented = true },
+                persona: activePersona
             )
             .inspectorColumnWidth(min: 280, ideal: 320, max: 440)
         }
@@ -458,7 +459,7 @@ struct ContentView: View {
             QuestionBankSheet { questions in addQuestions(questions, actionName: "Add from Bank") }
         }
         .sheet(isPresented: $isAuthoringPresented) {
-            AIAuthoringSheet(quizTitle: quiz.title) { questions in addQuestions(questions, actionName: "Add AI Questions") }
+            AIAuthoringSheet(quizTitle: quiz.title, persona: activePersona) { questions in addQuestions(questions, actionName: "Add AI Questions") }
         }
         .sheet(isPresented: $isLintSheetPresented) {
             QuizLintSheet(quiz: quiz, persona: activePersona) { id in selectedQuestionID = id }
@@ -1258,6 +1259,16 @@ struct QuestionEditor: View {
         QuestionLinter().findings(for: question, persona: persona)
     }
 
+    /// This question's links resolved into the quiz's actual entities, fed to the
+    /// AI so it reviews the whole item (stimulus, sources, objectives).
+    private var linkedContext: PromptLinkContext {
+        PromptLinkContext(
+            stimulus: question.stimulusID.flatMap { id in stimuli.first { $0.id == id } },
+            sources: question.sourceIDs.compactMap { id in sources.first { $0.id == id } },
+            objectives: question.objectiveIDs.compactMap { id in objectives.first { $0.id == id } }
+        )
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
@@ -1410,8 +1421,8 @@ struct QuestionEditor: View {
         }
         let service = QuestionAuthoringService()
         let stem = HTMLUtilities().plainText(fromHTML: question.prompt)
-        let prompt = service.makeDistractorsPrompt(prompt: stem, correctAnswer: correct, count: 3)
-        runGeneration(system: service.systemInstruction, user: prompt, temperature: 0.7) { raw in
+        let prompt = service.makeDistractorsPrompt(prompt: stem, correctAnswer: correct, count: 3, persona: persona)
+        runGeneration(system: service.systemInstruction(persona: persona), user: prompt, temperature: persona.aiProfile.temperatureOverride ?? 0.7) { raw in
             let distractors = service.parseDistractors(raw)
             guard !distractors.isEmpty else {
                 generationError = "No distractors were returned. Try again or rephrase the stem."
@@ -1425,8 +1436,8 @@ struct QuestionEditor: View {
 
     private func generateFeedback() {
         let service = QuestionAuthoringService()
-        let prompt = service.makeFeedbackPrompt(question: question, quizTitle: quizTitle)
-        runGeneration(system: service.systemInstruction, user: prompt, temperature: 0.4) { raw in
+        let prompt = service.makeFeedbackPrompt(question: question, quizTitle: quizTitle, persona: persona, linkedContext: linkedContext)
+        runGeneration(system: service.systemInstruction(persona: persona), user: prompt, temperature: persona.aiProfile.temperatureOverride ?? 0.4) { raw in
             guard let feedback = service.parseFeedback(raw) else {
                 generationError = "No feedback was returned."
                 return
@@ -1462,15 +1473,16 @@ struct QuestionEditor: View {
 
     private func reviewQuestion() {
         let service = QuestionReviewService()
-        let prompt = service.makePrompt(question: question, quizTitle: quizTitle)
-        let systemInstruction = service.systemInstruction
+        let prompt = service.makePrompt(question: question, quizTitle: quizTitle, persona: persona, linkedContext: linkedContext)
+        let systemInstruction = service.systemInstruction(persona: persona)
         let snapshot = question
+        let temperature = persona.aiProfile.temperatureOverride ?? 0.2
         reviewError = nil
         isReviewing = true
 
         Task {
             do {
-                let raw = try await runReviewPrompt(systemInstruction: systemInstruction, userPrompt: prompt)
+                let raw = try await runReviewPrompt(systemInstruction: systemInstruction, userPrompt: prompt, temperature: temperature)
                 let review = service.parse(raw, original: snapshot)
                 await MainActor.run {
                     isReviewing = false
@@ -1485,12 +1497,12 @@ struct QuestionEditor: View {
         }
     }
 
-    private func runReviewPrompt(systemInstruction: String, userPrompt: String) async throws -> String {
+    private func runReviewPrompt(systemInstruction: String, userPrompt: String, temperature: Double) async throws -> String {
         switch provider {
         case .openAICompatible:
             let endpointURL = URL(string: endpoint) ?? URL(string: "https://api.openai.com/v1/chat/completions")!
             let configuration = AIConfiguration(apiKey: apiKey, endpoint: endpointURL, model: model)
-            return try await AIClient().complete(systemInstruction: systemInstruction, userPrompt: userPrompt, configuration: configuration)
+            return try await AIClient().complete(systemInstruction: systemInstruction, userPrompt: userPrompt, configuration: configuration, temperature: temperature)
         case .foundationModels:
             return await FoundationModelsRunner.run(prompt: systemInstruction + "\n\n" + userPrompt)
         case .copyPaste:
@@ -1680,6 +1692,9 @@ struct AIPanel: View {
     let selectedQuestionNumber: Int?
     /// Opens the full Author with AI sheet, which ContentView owns.
     let onAuthorWithAI: () -> Void
+    /// The active persona, so AI prompts carry its preamble, guidelines, safety
+    /// clauses, and temperature.
+    var persona: Persona = .general
 
     @AppStorage("aiProvider") private var provider = AIProvider.openAICompatible
     @AppStorage("aiAPIKey") private var apiKey = ""
@@ -1924,20 +1939,25 @@ struct AIPanel: View {
         let apiKey = self.apiKey
         let endpoint = self.endpoint
         let model = self.model
+        let persona = self.persona
+        let quiz = self.quiz
+        let systemInstruction = service.systemInstruction(persona: persona)
+        let temperature = persona.aiProfile.temperatureOverride ?? 0.2
         return { questions in
-            let prompt = service.makeBatchPrompt(questions: questions, quizTitle: quizTitle)
+            let contexts = questions.map { quiz.promptLinkContext(for: $0) }
+            let prompt = service.makeBatchPrompt(questions: questions, quizTitle: quizTitle, persona: persona, contexts: contexts)
             let raw: String
             switch provider {
             case .foundationModels:
-                raw = await FoundationModelsRunner.run(prompt: service.systemInstruction + "\n\n" + prompt)
+                raw = await FoundationModelsRunner.run(prompt: systemInstruction + "\n\n" + prompt)
             default:
                 guard let url = URL(string: endpoint) else { throw URLError(.badURL) }
                 let configuration = AIConfiguration(apiKey: apiKey, endpoint: url, model: model)
                 raw = try await AIClient().complete(
-                    systemInstruction: service.systemInstruction,
+                    systemInstruction: systemInstruction,
                     userPrompt: prompt,
                     configuration: configuration,
-                    temperature: 0.2
+                    temperature: temperature
                 )
             }
             return service.parseBatch(raw, originals: questions)
@@ -2032,8 +2052,9 @@ struct AIPanel: View {
 
     private func reviewSelectedQuestion(_ binding: Binding<QuizQuestion>) {
         let service = QuestionReviewService()
-        let system = service.systemInstruction
-        let prompt = service.makePrompt(question: binding.wrappedValue, quizTitle: quizTitle)
+        let context = quiz.promptLinkContext(for: binding.wrappedValue)
+        let system = service.systemInstruction(persona: persona)
+        let prompt = service.makePrompt(question: binding.wrappedValue, quizTitle: quizTitle, persona: persona, linkedContext: context)
         if provider == .copyPaste {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(system + "\n\n" + prompt, forType: .string)
@@ -2071,8 +2092,8 @@ struct AIPanel: View {
         }
         let service = QuestionAuthoringService()
         let stem = HTMLUtilities().plainText(fromHTML: binding.wrappedValue.prompt)
-        let prompt = service.makeDistractorsPrompt(prompt: stem, correctAnswer: correct, count: 3)
-        runItemGeneration(system: service.systemInstruction, user: prompt, temperature: 0.7, id: "item-distractors") { raw in
+        let prompt = service.makeDistractorsPrompt(prompt: stem, correctAnswer: correct, count: 3, persona: persona)
+        runItemGeneration(system: service.systemInstruction(persona: persona), user: prompt, temperature: persona.aiProfile.temperatureOverride ?? 0.7, id: "item-distractors") { raw in
             let distractors = service.parseDistractors(raw)
             guard !distractors.isEmpty else {
                 status = PanelStatus(text: "No distractors were returned. Try again or rephrase the stem.", isError: true)
@@ -2085,8 +2106,8 @@ struct AIPanel: View {
 
     private func generateItemFeedback(_ binding: Binding<QuizQuestion>) {
         let service = QuestionAuthoringService()
-        let prompt = service.makeFeedbackPrompt(question: binding.wrappedValue, quizTitle: quizTitle)
-        runItemGeneration(system: service.systemInstruction, user: prompt, temperature: 0.4, id: "item-feedback") { raw in
+        let prompt = service.makeFeedbackPrompt(question: binding.wrappedValue, quizTitle: quizTitle, persona: persona, linkedContext: quiz.promptLinkContext(for: binding.wrappedValue))
+        runItemGeneration(system: service.systemInstruction(persona: persona), user: prompt, temperature: persona.aiProfile.temperatureOverride ?? 0.4, id: "item-feedback") { raw in
             guard let feedback = service.parseFeedback(raw) else {
                 status = PanelStatus(text: "No feedback was returned.", isError: true)
                 return
