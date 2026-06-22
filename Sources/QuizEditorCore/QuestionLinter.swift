@@ -10,16 +10,26 @@ public struct LintFinding: Equatable, Sendable, Identifiable {
         case suggestion
     }
 
-    public enum Rule: String, Sendable, Equatable, CaseIterable {
-        case noCorrectAnswer
-        case multipleCorrectAnswers
-        case allOrNoneOfTheAbove
-        case unemphasizedNegativeStem
-        case longestOptionIsCorrect
-        case duplicateOptions
-        case emptyOption
-        case missingFeedback
-        case articleCue
+    /// A stable rule identifier. Built-in rules are exposed as static constants
+    /// (source-compatible with the former `enum` cases, so `.noCorrectAnswer`
+    /// keeps working), while persona-supplied declarative rules can carry any
+    /// string id. This lets `LintViews` keep one-finding-per-rule identity.
+    public struct Rule: RawRepresentable, Hashable, Sendable {
+        public let rawValue: String
+
+        public init(rawValue: String) { self.rawValue = rawValue }
+        public init(_ rawValue: String) { self.rawValue = rawValue }
+
+        // Built-in rule ids.
+        public static let noCorrectAnswer = Rule("noCorrectAnswer")
+        public static let multipleCorrectAnswers = Rule("multipleCorrectAnswers")
+        public static let allOrNoneOfTheAbove = Rule("allOrNoneOfTheAbove")
+        public static let unemphasizedNegativeStem = Rule("unemphasizedNegativeStem")
+        public static let longestOptionIsCorrect = Rule("longestOptionIsCorrect")
+        public static let duplicateOptions = Rule("duplicateOptions")
+        public static let emptyOption = Rule("emptyOption")
+        public static let missingFeedback = Rule("missingFeedback")
+        public static let articleCue = Rule("articleCue")
     }
 
     public let rule: Rule
@@ -40,6 +50,16 @@ public struct LintFinding: Equatable, Sendable, Identifiable {
     }
 }
 
+extension PersonaSeverity {
+    /// The linter severity a persona-declared severity maps to.
+    var linterSeverity: LintFinding.Severity {
+        switch self {
+        case .warning: .warning
+        case .suggestion: .suggestion
+        }
+    }
+}
+
 /// A fast, offline, rule-based reviewer that catches common item-writing
 /// problems instantly and without a network or API. It complements (does not
 /// replace) the AI review, applying the same guidelines `QuestionReviewService`
@@ -56,34 +76,169 @@ public struct QuestionLinter: Sendable {
 
     public init() {}
 
-    /// Findings for one question, ordered most-severe first.
-    public func findings(for question: QuizQuestion) -> [LintFinding] {
-        var findings: [LintFinding] = []
+    /// Built-in rules a persona can never disable or down-weight. Accessibility
+    /// checks (alt text, accessible language) are platform rules and belong here
+    /// once they land; the current built-ins are all overridable.
+    public static let nonOverridableRuleIDs: Set<LintFinding.Rule> = []
 
-        findings.append(contentsOf: answerKeyFindings(question))
-        findings.append(contentsOf: optionTextFindings(question))
-        if let allNone = allOrNoneFinding(question) { findings.append(allNone) }
-        if let negative = negativeStemFinding(question) { findings.append(negative) }
-        if let lengthBias = lengthBiasFinding(question) { findings.append(lengthBias) }
-        if let article = articleCueFinding(question) { findings.append(article) }
-        if let feedback = missingFeedbackFinding(question) { findings.append(feedback) }
+    /// Findings for one question with the General persona (today's behavior).
+    public func findings(for question: QuizQuestion) -> [LintFinding] {
+        findings(for: question, persona: .general)
+    }
+
+    /// Findings for one question under `persona`, ordered most-severe first. The
+    /// persona can disable or re-weight built-in rules and contributes its own
+    /// declarative and lexicon findings; General leaves the built-ins untouched.
+    public func findings(for question: QuizQuestion, persona: Persona) -> [LintFinding] {
+        var builtIn: [LintFinding] = []
+
+        builtIn.append(contentsOf: answerKeyFindings(question))
+        builtIn.append(contentsOf: optionTextFindings(question))
+        if let allNone = allOrNoneFinding(question) { builtIn.append(allNone) }
+        if let negative = negativeStemFinding(question) { builtIn.append(negative) }
+        if let lengthBias = lengthBiasFinding(question) { builtIn.append(lengthBias) }
+        if let article = articleCueFinding(question) { builtIn.append(article) }
+        if let feedback = missingFeedbackFinding(question) { builtIn.append(feedback) }
+
+        var findings = applyOverrides(builtIn, profile: persona.linterProfile)
+        findings.append(contentsOf: declarativeFindings(question, profile: persona.linterProfile))
+        findings.append(contentsOf: lexiconFindings(question, terminology: persona.terminology))
 
         return findings.sorted { lhs, rhs in
             severityRank(lhs.severity) < severityRank(rhs.severity)
         }
     }
 
-    /// Findings for every question in a quiz, keyed by question id. Questions
-    /// with no findings are omitted.
+    /// Findings for every question in a quiz with the General persona.
     public func findings(for quiz: Quiz) -> [QuizQuestion.ID: [LintFinding]] {
+        findings(for: quiz, persona: .general)
+    }
+
+    /// Findings for every question in a quiz under `persona`, keyed by question
+    /// id. Questions with no findings are omitted.
+    public func findings(for quiz: Quiz, persona: Persona) -> [QuizQuestion.ID: [LintFinding]] {
         var result: [QuizQuestion.ID: [LintFinding]] = [:]
         for question in quiz.questions {
-            let questionFindings = findings(for: question)
+            let questionFindings = findings(for: question, persona: persona)
             if !questionFindings.isEmpty {
                 result[question.id] = questionFindings
             }
         }
         return result
+    }
+
+    // MARK: - Persona rule overrides
+
+    /// Drops disabled built-in findings and applies severity re-weights. A finding
+    /// for a non-overridable platform rule passes through unchanged.
+    private func applyOverrides(_ findings: [LintFinding], profile: PersonaLinterProfile) -> [LintFinding] {
+        findings.compactMap { finding in
+            guard
+                let override = profile.ruleOverrides[finding.rule.rawValue],
+                !Self.nonOverridableRuleIDs.contains(finding.rule)
+            else {
+                return finding
+            }
+            if override.enabled == false { return nil }
+            guard let severity = override.severity else { return finding }
+            return LintFinding(
+                rule: finding.rule,
+                severity: severity.linterSeverity,
+                message: finding.message,
+                suggestion: finding.suggestion
+            )
+        }
+    }
+
+    // MARK: - Declarative rule engine
+
+    /// Evaluates a persona's data-defined rules. Each rule fires when its required
+    /// token is absent from, or its forbidden token is present in, the scoped text
+    /// — provided the question passes the rule's item-type and difficulty gates.
+    private func declarativeFindings(_ question: QuizQuestion, profile: PersonaLinterProfile) -> [LintFinding] {
+        profile.declarativeRules.compactMap { rule in
+            guard gatePasses(rule, question) else { return nil }
+            let text = scopedText(rule.scope, question)
+
+            var triggered = false
+            if let required = rule.requiresPattern, !required.isEmpty {
+                if !matches(required, in: text) { triggered = true }
+            }
+            if !triggered, let forbidden = rule.forbidsPattern, !forbidden.isEmpty {
+                if matches(forbidden, in: text) { triggered = true }
+            }
+            guard triggered else { return nil }
+
+            return LintFinding(
+                rule: LintFinding.Rule(rule.id),
+                severity: rule.severity.linterSeverity,
+                message: rule.message,
+                suggestion: rule.suggestion
+            )
+        }
+    }
+
+    private func gatePasses(_ rule: PersonaLinterRule, _ question: QuizQuestion) -> Bool {
+        if !rule.itemTypes.isEmpty, !rule.itemTypes.contains(question.type) { return false }
+        if !rule.difficulties.isEmpty {
+            guard let difficulty = question.difficulty, rule.difficulties.contains(difficulty) else { return false }
+        }
+        return true
+    }
+
+    /// The plain text a rule scopes over. `options` joins every answer (or matching
+    /// pair) so a "required token absent from the options" check sees them all.
+    private func scopedText(_ scope: String, _ question: QuizQuestion) -> String {
+        switch scope {
+        case "feedback":
+            return plain(question.feedback)
+        case "options":
+            switch question.type {
+            case .matching:
+                return question.matches.map { plain($0.prompt) + " " + plain($0.match) }.joined(separator: " ")
+            case .essay:
+                return ""
+            default:
+                return question.answers.map { plain($0.text) }.joined(separator: " ")
+            }
+        default: // "stem"
+            return plain(question.prompt)
+        }
+    }
+
+    private func matches(_ pattern: String, in text: String) -> Bool {
+        text.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil
+    }
+
+    // MARK: - Lexicon scanner
+
+    /// Scans the stem, options, and feedback for any of a persona's discouraged
+    /// terms (whole-word, case-insensitive) and suggests the preferred wording.
+    /// One suggestion per terminology entry, keyed on the preferred term so it
+    /// keeps a stable one-finding-per-rule identity.
+    private func lexiconFindings(_ question: QuizQuestion, terminology: [PersonaTerminologyRule]) -> [LintFinding] {
+        guard !terminology.isEmpty else { return [] }
+        let haystack = [scopedText("stem", question), scopedText("options", question), scopedText("feedback", question)]
+            .joined(separator: " ")
+
+        return terminology.compactMap { entry in
+            guard let term = entry.discouraged.first(where: { wholeWordMatches($0, in: haystack) }) else { return nil }
+            var suggestion = "Prefer \u{201C}\(entry.preferred)\u{201D}."
+            if let rationale = entry.rationale, !rationale.isEmpty {
+                suggestion += " \(rationale)"
+            }
+            return LintFinding(
+                rule: LintFinding.Rule("terminology:\(entry.preferred.lowercased())"),
+                severity: .suggestion,
+                message: "The wording uses \u{201C}\(term),\u{201D} which this persona discourages.",
+                suggestion: suggestion
+            )
+        }
+    }
+
+    private func wholeWordMatches(_ term: String, in text: String) -> Bool {
+        let escaped = NSRegularExpression.escapedPattern(for: term)
+        return matches("\\b\(escaped)\\b", in: text)
     }
 
     // MARK: - Answer-key rules

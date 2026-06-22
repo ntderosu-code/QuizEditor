@@ -107,10 +107,16 @@ public struct PersonaLinterRule: Codable, Sendable, Equatable, Identifiable {
     public var id: String
     /// Where to look: stem, options, or feedback.
     public var scope: String
-    /// A token/regex that must be present (nil = no requirement).
+    /// A token/regex that must be present (nil = no requirement). The rule fires
+    /// when this pattern is ABSENT from the scoped text.
     public var requiresPattern: String?
-    /// A token/regex that must be absent (nil = no prohibition).
+    /// A token/regex that must be absent (nil = no prohibition). The rule fires
+    /// when this pattern is PRESENT in the scoped text.
     public var forbidsPattern: String?
+    /// Gate: only evaluate for these item types (empty = all types).
+    public var itemTypes: [QuizQuestionType]
+    /// Gate: only evaluate at these difficulties (empty = any/unspecified).
+    public var difficulties: [QuizDifficulty]
     public var severity: PersonaSeverity
     public var message: String
     public var suggestion: String
@@ -120,6 +126,8 @@ public struct PersonaLinterRule: Codable, Sendable, Equatable, Identifiable {
         scope: String = "stem",
         requiresPattern: String? = nil,
         forbidsPattern: String? = nil,
+        itemTypes: [QuizQuestionType] = [],
+        difficulties: [QuizDifficulty] = [],
         severity: PersonaSeverity = .suggestion,
         message: String,
         suggestion: String
@@ -128,6 +136,8 @@ public struct PersonaLinterRule: Codable, Sendable, Equatable, Identifiable {
         self.scope = scope
         self.requiresPattern = requiresPattern
         self.forbidsPattern = forbidsPattern
+        self.itemTypes = itemTypes
+        self.difficulties = difficulties
         self.severity = severity
         self.message = message
         self.suggestion = suggestion
@@ -139,13 +149,15 @@ public struct PersonaLinterRule: Codable, Sendable, Equatable, Identifiable {
         scope = try c.decodeIfPresent(String.self, forKey: .scope) ?? "stem"
         requiresPattern = try c.decodeIfPresent(String.self, forKey: .requiresPattern)
         forbidsPattern = try c.decodeIfPresent(String.self, forKey: .forbidsPattern)
+        itemTypes = try c.decodeIfPresent([QuizQuestionType].self, forKey: .itemTypes) ?? []
+        difficulties = try c.decodeIfPresent([QuizDifficulty].self, forKey: .difficulties) ?? []
         severity = try c.decodeIfPresent(PersonaSeverity.self, forKey: .severity) ?? .suggestion
         message = try c.decodeIfPresent(String.self, forKey: .message) ?? ""
         suggestion = try c.decodeIfPresent(String.self, forKey: .suggestion) ?? ""
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, scope, requiresPattern, forbidsPattern, severity, message, suggestion
+        case id, scope, requiresPattern, forbidsPattern, itemTypes, difficulties, severity, message, suggestion
     }
 }
 

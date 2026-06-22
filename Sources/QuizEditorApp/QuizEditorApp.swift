@@ -182,10 +182,11 @@ struct ContentView: View {
     @AppStorage("personaID") private var appDefaultPersonaID = Persona.generalID
     @State private var isPersonaSheetPresented = false
 
-    private var lintFindings: [UUID: [LintFinding]] { QuestionLinter().findings(for: quiz) }
+    private var lintFindings: [UUID: [LintFinding]] { QuestionLinter().findings(for: quiz, persona: activePersona) }
 
     /// The persona in effect for this quiz: its own override, else the app default,
-    /// else General. Phase 0 surfaces it in the UI but nothing consumes it yet.
+    /// else General. The linter reads it so inline lint, the sidebar status dot,
+    /// and Quality Check all reflect the active discipline.
     private var activePersona: Persona {
         personaStore.resolve(quiz.personaID ?? appDefaultPersonaID)
     }
@@ -460,7 +461,7 @@ struct ContentView: View {
             AIAuthoringSheet(quizTitle: quiz.title) { questions in addQuestions(questions, actionName: "Add AI Questions") }
         }
         .sheet(isPresented: $isLintSheetPresented) {
-            QuizLintSheet(quiz: quiz) { id in selectedQuestionID = id }
+            QuizLintSheet(quiz: quiz, persona: activePersona) { id in selectedQuestionID = id }
         }
         .sheet(isPresented: $isPersonaSheetPresented) {
             PersonaManagementSheet(personas: personaStore.personas, quizPersonaID: $quiz.personaID)
@@ -525,7 +526,8 @@ struct ContentView: View {
                 question: $quiz.questions[selectedIndex],
                 quizTitle: quiz.title,
                 questionNumber: selectedIndex + 1,
-                questionTotal: quiz.questions.count
+                questionTotal: quiz.questions.count,
+                persona: activePersona
             ) {
                 deleteQuestion(id: quiz.questions[selectedIndex].id)
             }
@@ -1223,6 +1225,8 @@ struct QuestionEditor: View {
     let quizTitle: String
     let questionNumber: Int
     let questionTotal: Int
+    /// The active persona, so the inline item-writing checks reflect the discipline.
+    var persona: Persona = .general
     let onDelete: () -> Void
 
     @AppStorage("aiProvider") private var provider = AIProvider.openAICompatible
@@ -1243,7 +1247,7 @@ struct QuestionEditor: View {
     }
 
     private var findings: [LintFinding] {
-        QuestionLinter().findings(for: question)
+        QuestionLinter().findings(for: question, persona: persona)
     }
 
     var body: some View {

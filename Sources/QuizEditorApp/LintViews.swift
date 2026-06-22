@@ -82,11 +82,12 @@ struct LintFindingRow: View {
 /// A quiz-wide summary listing every flagged question. Selecting one jumps to it.
 struct QuizLintSheet: View {
     let quiz: Quiz
+    let persona: Persona
     let onSelect: (UUID) -> Void
     @Environment(\.dismiss) private var dismiss
 
     private var flagged: [(number: Int, question: QuizQuestion, findings: [LintFinding])] {
-        let byID = QuestionLinter().findings(for: quiz)
+        let byID = QuestionLinter().findings(for: quiz, persona: persona)
         return quiz.questions.enumerated().compactMap { index, question in
             guard let findings = byID[question.id] else { return nil }
             return (index + 1, question, findings)
@@ -95,8 +96,9 @@ struct QuizLintSheet: View {
 
     private var html = HTMLUtilities()
 
-    init(quiz: Quiz, onSelect: @escaping (UUID) -> Void) {
+    init(quiz: Quiz, persona: Persona = .general, onSelect: @escaping (UUID) -> Void) {
         self.quiz = quiz
+        self.persona = persona
         self.onSelect = onSelect
     }
 
