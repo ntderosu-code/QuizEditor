@@ -11,16 +11,10 @@ struct SidebarView: View {
     @Binding var quiz: Quiz
     @Binding var selectedQuestionID: UUID?
     let lintFindings: [UUID: [LintFinding]]
-    let onAddQuestion: () -> Void
-    let onImportMarkedText: () -> Void
-    let onImportQTI: (Bool) -> Void
     let onDuplicate: (UUID) -> Void
     let onDelete: (UUID) -> Void
     let onMove: (IndexSet, Int) -> Void
     let onNudge: (UUID, Int) -> Void
-    let onOpenBank: () -> Void
-    let onMergeFromFile: () -> Void
-    let onImportCommonCartridge: () -> Void
 
     @State private var searchText = ""
     @State private var difficultyFilter: QuizDifficulty?
@@ -104,7 +98,6 @@ struct SidebarView: View {
         .listStyle(.sidebar)
         .navigationTitle("Quiz")
         .safeAreaInset(edge: .top) { searchBar }
-        .safeAreaInset(edge: .bottom) { bottomBar }
     }
 
     private func questionRow(number: Int, question: QuizQuestion) -> some View {
@@ -200,46 +193,6 @@ struct SidebarView: View {
         .menuStyle(.button)
         .controlSize(.small)
         .fixedSize()
-    }
-
-    private var bottomBar: some View {
-        // Liquid Glass buttons need an opaque footer behind them; otherwise the
-        // scrolling list bleeds through and they're invisible. The bar uses the
-        // window background (not a contrasting material) plus a hairline so it
-        // reads as part of the sidebar, and the glass buttons sit clearly on top.
-        HStack(spacing: 8) {
-            Button(action: onAddQuestion) {
-                Label("Add Question", systemImage: "plus")
-            }
-            .labelStyle(.iconOnly)
-            .help("Add a new question (⇧⌘N)")
-
-            // Icon-only menu with no fixed width so the bar reflows at any
-            // sidebar width instead of being clipped.
-            Menu {
-                Button("Marked Text…", action: onImportMarkedText)
-                Button("QTI Zip — Keep Formatting…") { onImportQTI(true) }
-                Button("QTI Zip — Plain Text…") { onImportQTI(false) }
-                Button("Common Cartridge (.imscc)…", action: onImportCommonCartridge)
-                Divider()
-                Button("Merge from File…", action: onMergeFromFile)
-                Button("Question Bank…", action: onOpenBank)
-            } label: {
-                Label("Add Content", systemImage: "tray.and.arrow.down")
-            }
-            .menuStyle(.button)
-            .labelStyle(.iconOnly)
-            .fixedSize()
-            .help("Import, merge, or add questions from the bank")
-
-            Spacer(minLength: 0)
-        }
-        .buttonStyle(.glass)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity)
-        .background(Color(nsColor: .windowBackgroundColor))
-        .overlay(alignment: .top) { Divider() }
     }
 }
 

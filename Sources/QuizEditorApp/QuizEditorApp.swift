@@ -224,19 +224,10 @@ struct ContentView: View {
                 quiz: $quiz,
                 selectedQuestionID: $selectedQuestionID,
                 lintFindings: lintFindings,
-                onAddQuestion: addQuestion,
-                onImportMarkedText: { isImporterPresented = true },
-                onImportQTI: { keepFormatting in
-                    importPreservesFormatting = keepFormatting
-                    isQTIImporterPresented = true
-                },
                 onDuplicate: duplicateQuestion(id:),
                 onDelete: deleteQuestion(id:),
                 onMove: moveQuestions(from:to:),
-                onNudge: nudgeQuestion(id:by:),
-                onOpenBank: { isBankPresented = true },
-                onMergeFromFile: { isMergeImporterPresented = true },
-                onImportCommonCartridge: { isIMSCCImporterPresented = true }
+                onNudge: nudgeQuestion(id:by:)
             )
             .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 320)
         } detail: {
@@ -288,7 +279,7 @@ struct ContentView: View {
 
             ToolbarSpacer(.fixed)
 
-            ToolbarItem {
+            ToolbarItemGroup {
                 Menu {
                     Button("Marked Text…") { isImporterPresented = true }
                         .keyboardShortcut("i", modifiers: [.command, .shift])
@@ -306,16 +297,15 @@ struct ContentView: View {
                     Button("Common Cartridge (.imscc)…") {
                         isIMSCCImporterPresented = true
                     }
+                    Divider()
+                    Button("Merge from File…") { isMergeImporterPresented = true }
+                    Button("Question Bank…") { isBankPresented = true }
                 } label: {
                     Label("Import", systemImage: "square.and.arrow.down")
                 }
                 .menuIndicator(.hidden)
                 .help("Import questions from marked text, a QTI .zip, or an IMS Common Cartridge (works with Canvas and other LMSs)")
-            }
 
-            ToolbarSpacer(.fixed)
-
-            ToolbarItemGroup {
                 Menu {
                     Section("QTI Package") {
                         ForEach(CanvasQuizEngine.allCases) { engine in
@@ -387,11 +377,7 @@ struct ContentView: View {
                 }
                 .menuIndicator(.hidden)
                 .help("Choose the discipline persona for this quiz (⌥⌘P to manage)")
-            }
 
-            ToolbarSpacer(.fixed)
-
-            ToolbarItem {
                 Menu {
                     Button("Check Spelling", action: checkSpelling)
                     Button("Show Spelling and Grammar", action: showSpellingPanel)
