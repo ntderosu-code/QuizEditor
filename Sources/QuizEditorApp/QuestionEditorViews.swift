@@ -22,6 +22,8 @@ struct QuestionEditor: View {
     var frameworks: [Framework] = []
     /// The active persona, so the inline item-writing checks reflect the discipline.
     var persona: Persona = .general
+    /// Opens the formatted preview for this question (owned by ContentView).
+    var onPreview: () -> Void = {}
     let onDelete: () -> Void
 
     @AppStorage("aiProvider") private var provider = AIProvider.openAICompatible
@@ -68,70 +70,14 @@ struct QuestionEditor: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                HStack(alignment: .firstTextBaseline) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Question \(questionNumber) of \(questionTotal)")
-                            .font(.title2.bold())
-                        Text("Edit the prompt, answer choices, and feedback.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
+        VStack(spacing: 0) {
+            stickyHeader
+            Divider()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    QuestionReadinessView(readiness: QuestionReadiness(question: question))
 
-                    if undoSnapshot != nil {
-                        Button {
-                            undoAIChanges()
-                        } label: {
-                            Label("Undo AI Changes", systemImage: "arrow.uturn.backward")
-                        }
-                        .labelStyle(.iconOnly)
-                        .help("Undo AI changes — revert edits applied from the last AI review")
-                    }
-
-                    Button {
-                        reviewQuestion()
-                    } label: {
-                        if isReviewing {
-                            ProgressView().controlSize(.small)
-                            Text("Reviewing…")
-                        } else {
-                            Label("AI Review", systemImage: "sparkles")
-                        }
-                    }
-                    .disabled(isReviewing)
-                    .buttonStyle(.glassProminent)
-                    .foregroundStyle(.white)
-                    .fixedSize()
-                    .help("Review this question for item-writing quality and apply suggested edits")
-
-                    Menu {
-                        Button("Generate Distractors") { generateDistractors() }
-                            .disabled(!canGenerateDistractors)
-                        Button("Generate Feedback") { generateFeedback() }
-                    } label: {
-                        if isGenerating {
-                            ProgressView().controlSize(.small)
-                        } else {
-                            Label("AI Tools", systemImage: "wand.and.stars")
-                        }
-                    }
-                    .menuIndicator(.hidden)
-                    .disabled(isGenerating)
-                    .fixedSize()
-                    .help("Generate distractors or feedback for this question with AI")
-
-                    Button(role: .destructive, action: onDelete) {
-                        Label("Delete Question", systemImage: "trash")
-                    }
-                    .labelStyle(.iconOnly)
-                    .help("Delete this question")
-                }
-
-                QuestionReadinessView(readiness: QuestionReadiness(question: question))
-
-                QuestionMetadataEditor(question: $question)
+                    QuestionMetadataEditor(question: $question)
 
                 QuestionLinkingSection(
                     question: $question,
@@ -171,14 +117,87 @@ struct QuestionEditor: View {
 
                 Divider()
 
-                QuestionTagsEditor(question: $question)
+                    QuestionTagsEditor(question: $question)
+                }
+                .padding(24)
             }
-            .padding(24)
+            .background(Color(nsColor: .textBackgroundColor))
         }
-        .background(Color(nsColor: .textBackgroundColor))
         .sheet(item: $reviewPresentation) { presentation in
             QuestionReviewSheet(review: presentation.review, original: question, onApply: applyEdit)
         }
+    }
+
+    // MARK: - Sticky header
+
+    /// A compact, non-scrolling header: question position, type, readiness badge,
+    /// and exactly one prominent question-level AI action (Review question).
+    /// Preview and secondary/field actions live alongside it (an overflow menu)
+    /// rather than as competing top-level buttons.
+    private var stickyHeader: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 8) {
+                    Text("Question \(questionNumber) of \(questionTotal)")
+                        .font(.headline)
+                    ReadinessBadge(status: QuestionReadiness(question: question).status)
+                }
+                Text(question.type.displayName)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 8)
+
+            if isGenerating {
+                ProgressView().controlSize(.small)
+            }
+
+            Button(action: onPreview) {
+                Label("Preview", systemImage: "eye")
+            }
+            .labelStyle(.iconOnly)
+            .help("Preview this question (⇧⌘P)")
+
+            Button {
+                reviewQuestion()
+            } label: {
+                if isReviewing {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.small)
+                        Text("Reviewing…")
+                    }
+                } else {
+                    Label("Review question", systemImage: "sparkles")
+                }
+            }
+            .disabled(isReviewing)
+            .buttonStyle(.glassProminent)
+            .foregroundStyle(.white)
+            .fixedSize()
+            .help("Review this question for item-writing quality and apply suggested edits")
+
+            Menu {
+                Button("Generate Distractors") { generateDistractors() }
+                    .disabled(!canGenerateDistractors)
+                Button("Generate Feedback") { generateFeedback() }
+                if undoSnapshot != nil {
+                    Divider()
+                    Button("Undo AI Changes") { undoAIChanges() }
+                }
+                Divider()
+                Button("Delete Question", role: .destructive, action: onDelete)
+            } label: {
+                Label("More actions", systemImage: "ellipsis.circle")
+            }
+            .menuIndicator(.hidden)
+            .labelStyle(.iconOnly)
+            .fixedSize()
+            .help("Generate distractors or feedback, undo AI edits, or delete this question")
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 12)
+        .background(.bar)
     }
 
     private func applyEdit(_ mutate: (inout QuizQuestion) -> Void) {
