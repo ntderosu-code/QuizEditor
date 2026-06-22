@@ -1835,6 +1835,10 @@ struct AIPanel: View {
     @State private var runningAction: String?
     @State private var isConfigPresented = false
     @State private var aiResult: AIResultContext?
+    /// A parsed item review, shown in the formatted diff sheet with per-field Apply.
+    @State private var reviewPresentation: ReviewPresentation?
+    /// The selected question as it was when its review started — the diff "before".
+    @State private var reviewOriginal: QuizQuestion?
     @State private var status: PanelStatus?
 
     private var isRunning: Bool { runningAction != nil }
@@ -1874,6 +1878,13 @@ struct AIPanel: View {
         }
         .sheet(item: $aiResult) { result in
             AIResultSheet(result: result)
+        }
+        .sheet(item: $reviewPresentation) { presentation in
+            if let original = reviewOriginal, let selectedQuestion {
+                QuestionReviewSheet(review: presentation.review, original: original) { mutate in
+                    mutate(&selectedQuestion.wrappedValue)
+                }
+            }
         }
     }
 
@@ -1946,7 +1957,7 @@ struct AIPanel: View {
             toolButton("Draft Feedback", systemImage: "text.bubble", id: quizActionID(.generateFeedback)) {
                 runQuizFeature(.generateFeedback)
             }
-            toolButton("Author New Questions…", systemImage: "plus.square.on.square", id: "author", disabledWhenRunning: false, action: onAuthorWithAI)
+            toolButton("Author New Questions…", systemImage: "plus.square.on.square", id: "author", action: onAuthorWithAI)
 
             if provider == .copyPaste {
                 Button("Paste Response", action: pasteAIResponse)
@@ -2131,12 +2142,16 @@ struct AIPanel: View {
         runningAction = "item-review"
         status = nil
         let runner = self.runner
+        let snapshot = binding.wrappedValue
         Task {
             do {
                 let raw = try await runner.run(system: system, user: prompt)
                 await MainActor.run {
                     runningAction = nil
-                    presentResult(raw, title: "Question Review")
+                    // Parse into the formatted review sheet (summary, suggestions,
+                    // and per-field diffs with Apply) instead of showing raw JSON.
+                    reviewOriginal = snapshot
+                    reviewPresentation = ReviewPresentation(review: service.parse(raw, original: snapshot))
                 }
             } catch {
                 await MainActor.run {
