@@ -35,7 +35,6 @@ struct QuestionEditor: View {
     @State private var reviewError: String?
     @State private var reviewPresentation: ReviewPresentation?
     @State private var undoSnapshot: QuizQuestion?
-    @State private var isFeedbackExpanded = false
     @State private var isGenerating = false
     @State private var generationError: String?
 
@@ -89,7 +88,7 @@ struct QuestionEditor: View {
 
                 LintFindingsSection(findings: findings)
 
-                RichTextField(title: "Prompt", text: $question.prompt, minHeight: 160)
+                RichTextField(title: "Question stem", text: $question.prompt, minHeight: 200)
 
                 if question.type == .matching {
                     MatchingEditor(matches: $question.matches)
@@ -99,13 +98,7 @@ struct QuestionEditor: View {
                     AnswerEditor(question: $question)
                 }
 
-                DisclosureGroup(isExpanded: $isFeedbackExpanded) {
-                    RichTextField(title: "Feedback", text: $question.feedback, minHeight: 140, showsTitle: false)
-                        .padding(.top, 8)
-                } label: {
-                    Text("Feedback for students")
-                        .font(.subheadline.weight(.semibold))
-                }
+                feedbackSection
 
                 Divider()
 
@@ -192,6 +185,42 @@ struct QuestionEditor: View {
         .background(.bar)
     }
 
+    /// Student feedback, surfaced as readiness-critical rather than buried in a
+    /// collapsed disclosure: a status line shows at a glance whether it is present,
+    /// and drafting feedback is a contextual action right here next to the field.
+    @ViewBuilder
+    private var feedbackSection: some View {
+        let hasFeedback = !HTMLUtilities()
+            .plainText(fromHTML: question.feedback)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .isEmpty
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text("Feedback for students")
+                    .font(.subheadline.weight(.semibold))
+                Label(hasFeedback ? "Complete" : "Missing",
+                      systemImage: hasFeedback ? "checkmark.circle.fill" : "exclamationmark.circle")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(hasFeedback ? .green : .orange)
+                    .accessibilityLabel(hasFeedback ? "Feedback complete" : "Feedback missing")
+                Spacer()
+                Button {
+                    generateFeedback()
+                } label: {
+                    if isGenerating {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Label("Generate draft feedback", systemImage: "text.bubble")
+                    }
+                }
+                .font(.caption)
+                .disabled(isGenerating)
+                .help("Draft feedback for this question with AI")
+            }
+            RichTextField(title: "Feedback", text: $question.feedback, minHeight: 140, showsTitle: false)
+        }
+    }
+
     private func applyEdit(_ mutate: (inout QuizQuestion) -> Void) {
         if undoSnapshot == nil { undoSnapshot = question }
         mutate(&question)
@@ -265,7 +294,6 @@ struct QuestionEditor: View {
                 return
             }
             applyEdit { $0.feedback = feedback }
-            isFeedbackExpanded = true
         }
     }
 
