@@ -271,23 +271,11 @@ struct AIPanel: View {
         let frameworks = self.frameworks
         let systemInstruction = service.systemInstruction(persona: persona)
         let temperature = persona.aiProfile.temperatureOverride ?? 0.2
+        let runner = ConfiguredAIRunner(provider: provider, apiKey: apiKey, endpoint: endpoint, model: model)
         return { questions in
             let contexts = questions.map { quiz.promptLinkContext(for: $0, frameworks: frameworks) }
             let prompt = service.makeBatchPrompt(questions: questions, quizTitle: quizTitle, persona: persona, contexts: contexts)
-            let raw: String
-            switch provider {
-            case .foundationModels:
-                raw = await FoundationModelsRunner.run(prompt: systemInstruction + "\n\n" + prompt)
-            default:
-                guard let url = URL(string: endpoint) else { throw URLError(.badURL) }
-                let configuration = AIConfiguration(apiKey: apiKey, endpoint: url, model: model)
-                raw = try await AIClient().complete(
-                    systemInstruction: systemInstruction,
-                    userPrompt: prompt,
-                    configuration: configuration,
-                    temperature: temperature
-                )
-            }
+            let raw = try await runner.runBatchReview(system: systemInstruction, user: prompt, temperature: temperature)
             return service.parseBatch(raw, originals: questions)
         }
     }
@@ -393,9 +381,10 @@ struct AIPanel: View {
         status = nil
         let runner = self.runner
         let snapshot = binding.wrappedValue
+        let temperature = persona.aiProfile.temperatureOverride ?? 0.2
         Task {
             do {
-                let raw = try await runner.run(system: system, user: prompt)
+                let raw = try await runner.runReview(system: system, user: prompt, temperature: temperature)
                 await MainActor.run {
                     runningAction = nil
                     // Parse into the formatted review sheet (summary, suggestions,
@@ -421,7 +410,11 @@ struct AIPanel: View {
         let service = QuestionAuthoringService()
         let stem = HTMLUtilities().plainText(fromHTML: binding.wrappedValue.prompt)
         let prompt = service.makeDistractorsPrompt(prompt: stem, correctAnswer: correct, count: 3, persona: persona)
-        runItemGeneration(system: service.systemInstruction(persona: persona), user: prompt, temperature: persona.aiProfile.temperatureOverride ?? 0.7, id: "item-distractors") { raw in
+        let system = service.systemInstruction(persona: persona)
+        let temperature = persona.aiProfile.temperatureOverride ?? 0.7
+        let labels = persona.aiProfile.labelsMisconceptions
+        let runner = self.runner
+        runItemGeneration(id: "item-distractors", perform: { try await runner.runDistractors(system: system, user: prompt, labelsMisconceptions: labels, temperature: temperature) }) { raw in
             let distractors = service.parseLabeledDistractors(raw)
             guard !distractors.isEmpty else {
                 status = PanelStatus(text: "No distractors were returned. Try again or rephrase the stem.", isError: true)
@@ -435,7 +428,10 @@ struct AIPanel: View {
     private func generateItemFeedback(_ binding: Binding<QuizQuestion>) {
         let service = QuestionAuthoringService()
         let prompt = service.makeFeedbackPrompt(question: binding.wrappedValue, quizTitle: quizTitle, persona: persona, linkedContext: quiz.promptLinkContext(for: binding.wrappedValue, frameworks: frameworks))
-        runItemGeneration(system: service.systemInstruction(persona: persona), user: prompt, temperature: persona.aiProfile.temperatureOverride ?? 0.4, id: "item-feedback") { raw in
+        let system = service.systemInstruction(persona: persona)
+        let temperature = persona.aiProfile.temperatureOverride ?? 0.4
+        let runner = self.runner
+        runItemGeneration(id: "item-feedback", perform: { try await runner.runFeedback(system: system, user: prompt, temperature: temperature) }) { raw in
             guard let feedback = service.parseFeedback(raw) else {
                 status = PanelStatus(text: "No feedback was returned.", isError: true)
                 return
@@ -445,17 +441,16 @@ struct AIPanel: View {
         }
     }
 
-    private func runItemGeneration(system: String, user: String, temperature: Double, id: String, apply: @escaping (String) -> Void) {
+    private func runItemGeneration(id: String, perform: @escaping () async throws -> String, apply: @escaping (String) -> Void) {
         guard runner.supportsAutoRun else {
             status = PanelStatus(text: "Switch to the API or Apple Foundation Models provider to generate here, or use Author with AI for copy and paste.", isError: true)
             return
         }
         runningAction = id
         status = nil
-        let runner = self.runner
         Task {
             do {
-                let raw = try await runner.run(system: system, user: user, temperature: temperature)
+                let raw = try await perform()
                 await MainActor.run {
                     runningAction = nil
                     apply(raw)

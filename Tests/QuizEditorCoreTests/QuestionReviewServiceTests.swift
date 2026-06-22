@@ -92,6 +92,37 @@ final class QuestionReviewServiceTests: XCTestCase {
         XCTAssertFalse(review.hasRevisions)
     }
 
+    func testMalformedJSONNeverShowsRawBracesToTheUser() {
+        // A response that looks like JSON but doesn't decode must not be dumped to
+        // the user as raw braces; it should read as a friendly, plain-language summary.
+        let raw = """
+        { "summary": "Tighten the stem", "revised": { "prompt": "oops unterminated
+        """
+
+        let review = QuestionReviewService().parse(raw, original: sampleQuestion)
+
+        XCTAssertFalse(review.summary.contains("{"))
+        XCTAssertFalse(review.summary.contains("\"summary\""))
+        XCTAssertFalse(review.hasRevisions)
+    }
+
+    func testRevisionEqualToOriginalIsNotOfferedAsAnEdit() {
+        // Guided generation always returns every field, so a "revised" value that
+        // matches the original must not surface as a no-op diff.
+        let raw = """
+        {
+          "summary": "Looks good.",
+          "revised": { "prompt": "Which is biggest?", "feedback": "Elephants are large." }
+        }
+        """
+
+        let review = QuestionReviewService().parse(raw, original: sampleQuestion)
+
+        XCTAssertNil(review.revisedPrompt)
+        XCTAssertNil(review.revisedFeedback)
+        XCTAssertFalse(review.hasRevisions)
+    }
+
     func testRewritesAnswersInPlacePreservingCountIdsAndCorrectness() {
         let original = QuizQuestion(
             type: .multipleChoice,

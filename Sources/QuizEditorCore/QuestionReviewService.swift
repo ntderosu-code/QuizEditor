@@ -100,11 +100,22 @@ public struct QuestionReviewService: Sendable {
         guard let jsonString = extractJSONObject(from: raw),
               let data = jsonString.data(using: .utf8),
               let dto = try? JSONDecoder().decode(ReviewDTO.self, from: data) else {
-            // Fall back to showing the raw model output so nothing is lost.
-            return QuestionReview(summary: raw.trimmingCharacters(in: .whitespacesAndNewlines))
+            return QuestionReview(summary: Self.fallbackSummary(from: raw))
         }
 
         return makeReview(summary: dto.summary, suggestions: dto.suggestions, revised: dto.revised, original: original)
+    }
+
+    /// Summary to show when the model's response can't be parsed. Plain prose (such
+    /// as an error message) passes through so nothing useful is lost; but a response
+    /// that looked like JSON yet failed to decode is replaced with a plain-language
+    /// note rather than dumping raw braces at the user.
+    static func fallbackSummary(from raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.contains("{") || trimmed.contains("[") {
+            return "The reviewer's response could not be read. Please run the review again."
+        }
+        return trimmed
     }
 
     // MARK: - Batch (whole-quiz page) review
@@ -200,10 +211,10 @@ public struct QuestionReviewService: Sendable {
         QuestionReview(
             summary: summary?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "No summary returned.",
             suggestions: suggestions ?? [],
-            revisedPrompt: nonEmpty(revised?.prompt),
+            revisedPrompt: changedText(revised?.prompt, from: original.prompt),
             revisedAnswers: alignedAnswers(revised?.answers, original: original.answers),
             revisedMatches: alignedMatches(revised?.matches, original: original.matches),
-            revisedFeedback: nonEmpty(revised?.feedback)
+            revisedFeedback: changedText(revised?.feedback, from: original.feedback)
         )
     }
 
@@ -262,6 +273,14 @@ public struct QuestionReviewService: Sendable {
             return nil
         }
         return String(raw[start...end])
+    }
+
+    /// A reworded value, or nil when it is empty or unchanged from the original.
+    /// Guided generation returns every field on every call, so an unchanged value
+    /// must not surface as a no-op "edit".
+    private func changedText(_ value: String?, from original: String) -> String? {
+        guard let trimmed = nonEmpty(value) else { return nil }
+        return trimmed == original.trimmingCharacters(in: .whitespacesAndNewlines) ? nil : trimmed
     }
 
     private func nonEmpty(_ value: String?) -> String? {

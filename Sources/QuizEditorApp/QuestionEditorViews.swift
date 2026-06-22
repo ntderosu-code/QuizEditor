@@ -223,7 +223,11 @@ struct QuestionEditor: View {
         let service = QuestionAuthoringService()
         let stem = HTMLUtilities().plainText(fromHTML: question.prompt)
         let prompt = service.makeDistractorsPrompt(prompt: stem, correctAnswer: correct, count: 3, persona: persona)
-        runGeneration(system: service.systemInstruction(persona: persona), user: prompt, temperature: persona.aiProfile.temperatureOverride ?? 0.7) { raw in
+        let system = service.systemInstruction(persona: persona)
+        let temperature = persona.aiProfile.temperatureOverride ?? 0.7
+        let labels = persona.aiProfile.labelsMisconceptions
+        let runner = self.runner
+        runGeneration(perform: { try await runner.runDistractors(system: system, user: prompt, labelsMisconceptions: labels, temperature: temperature) }) { raw in
             let distractors = service.parseLabeledDistractors(raw)
             guard !distractors.isEmpty else {
                 generationError = "No distractors were returned. Try again or rephrase the stem."
@@ -238,7 +242,10 @@ struct QuestionEditor: View {
     private func generateFeedback() {
         let service = QuestionAuthoringService()
         let prompt = service.makeFeedbackPrompt(question: question, quizTitle: quizTitle, persona: persona, linkedContext: linkedContext)
-        runGeneration(system: service.systemInstruction(persona: persona), user: prompt, temperature: persona.aiProfile.temperatureOverride ?? 0.4) { raw in
+        let system = service.systemInstruction(persona: persona)
+        let temperature = persona.aiProfile.temperatureOverride ?? 0.4
+        let runner = self.runner
+        runGeneration(perform: { try await runner.runFeedback(system: system, user: prompt, temperature: temperature) }) { raw in
             guard let feedback = service.parseFeedback(raw) else {
                 generationError = "No feedback was returned."
                 return
@@ -248,17 +255,16 @@ struct QuestionEditor: View {
         }
     }
 
-    private func runGeneration(system: String, user: String, temperature: Double, apply: @escaping (String) -> Void) {
+    private func runGeneration(perform: @escaping () async throws -> String, apply: @escaping (String) -> Void) {
         generationError = nil
         guard runner.supportsAutoRun else {
             generationError = "Switch to the API or Apple Foundation Models provider to generate here, or use Author with AI for copy/paste."
             return
         }
         isGenerating = true
-        let runner = self.runner
         Task {
             do {
-                let raw = try await runner.run(system: system, user: user, temperature: temperature)
+                let raw = try await perform()
                 await MainActor.run {
                     isGenerating = false
                     apply(raw)
@@ -281,9 +287,10 @@ struct QuestionEditor: View {
         reviewError = nil
         isReviewing = true
 
+        let runner = self.runner
         Task {
             do {
-                let raw = try await runReviewPrompt(systemInstruction: systemInstruction, userPrompt: prompt, temperature: temperature)
+                let raw = try await runner.runReview(system: systemInstruction, user: prompt, temperature: temperature)
                 let review = service.parse(raw, original: snapshot)
                 await MainActor.run {
                     isReviewing = false
@@ -298,29 +305,6 @@ struct QuestionEditor: View {
         }
     }
 
-    private func runReviewPrompt(systemInstruction: String, userPrompt: String, temperature: Double) async throws -> String {
-        switch provider {
-        case .openAICompatible:
-            let endpointURL = URL(string: endpoint) ?? URL(string: "https://api.openai.com/v1/chat/completions")!
-            let configuration = AIConfiguration(apiKey: apiKey, endpoint: endpointURL, model: model)
-            return try await AIClient().complete(systemInstruction: systemInstruction, userPrompt: userPrompt, configuration: configuration, temperature: temperature)
-        case .foundationModels:
-            return await FoundationModelsRunner.run(prompt: systemInstruction + "\n\n" + userPrompt)
-        case .copyPaste:
-            throw InlineReviewError.unsupportedProvider
-        }
-    }
-}
-
-private enum InlineReviewError: Error, CustomStringConvertible {
-    case unsupportedProvider
-
-    var description: String {
-        switch self {
-        case .unsupportedProvider:
-            "Inline review needs the OpenAI-compatible API or Apple Foundation Models provider. Change it in the AI Assistant panel on the right."
-        }
-    }
 }
 
 struct ReviewPresentation: Identifiable {

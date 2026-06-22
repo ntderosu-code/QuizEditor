@@ -25,21 +25,62 @@ struct ConfiguredAIRunner {
         }
     }
 
-    func run(system: String, user: String, temperature: Double = 0.2) async throws -> String {
+    // MARK: - Feature-specific runs (structured)
+    //
+    // For Apple Foundation Models these use guided generation so the on-device
+    // model returns well-formed structured output (no raw-JSON parse failures, no
+    // echoed example placeholders). For the OpenAI-compatible API they fall back to
+    // the same text completion the Core parsers already handle. All return a JSON
+    // string in the shape the matching `QuizEditorCore` parser expects.
+
+    func runReview(system: String, user: String, temperature: Double = 0.2) async throws -> String {
         switch provider {
-        case .openAICompatible:
-            let endpointURL = URL(string: endpoint) ?? URL(string: "https://api.openai.com/v1/chat/completions")!
-            let configuration = AIConfiguration(apiKey: apiKey, endpoint: endpointURL, model: model)
-            return try await AIClient().complete(
-                systemInstruction: system,
-                userPrompt: user,
-                configuration: configuration,
-                temperature: temperature
-            )
-        case .foundationModels:
-            return await FoundationModelsRunner.run(prompt: system + "\n\n" + user)
-        case .copyPaste:
-            throw RunnerError.copyPasteRequiresManualRun
+        case .openAICompatible: return try await openAIComplete(system: system, user: user, temperature: temperature)
+        case .foundationModels: return try await GuidedFoundationModels.review(system: system, user: user)
+        case .copyPaste: throw RunnerError.copyPasteRequiresManualRun
         }
+    }
+
+    func runBatchReview(system: String, user: String, temperature: Double = 0.2) async throws -> String {
+        switch provider {
+        case .openAICompatible: return try await openAIComplete(system: system, user: user, temperature: temperature)
+        case .foundationModels: return try await GuidedFoundationModels.batchReview(system: system, user: user)
+        case .copyPaste: throw RunnerError.copyPasteRequiresManualRun
+        }
+    }
+
+    func runDistractors(system: String, user: String, labelsMisconceptions: Bool, temperature: Double = 0.7) async throws -> String {
+        switch provider {
+        case .openAICompatible: return try await openAIComplete(system: system, user: user, temperature: temperature)
+        case .foundationModels: return try await GuidedFoundationModels.distractors(system: system, user: user, labelsMisconceptions: labelsMisconceptions)
+        case .copyPaste: throw RunnerError.copyPasteRequiresManualRun
+        }
+    }
+
+    func runFeedback(system: String, user: String, temperature: Double = 0.4) async throws -> String {
+        switch provider {
+        case .openAICompatible: return try await openAIComplete(system: system, user: user, temperature: temperature)
+        case .foundationModels: return try await GuidedFoundationModels.feedback(system: system, user: user)
+        case .copyPaste: throw RunnerError.copyPasteRequiresManualRun
+        }
+    }
+
+    func runQuestions(system: String, user: String, temperature: Double = 0.7) async throws -> String {
+        switch provider {
+        case .openAICompatible: return try await openAIComplete(system: system, user: user, temperature: temperature)
+        case .foundationModels: return try await GuidedFoundationModels.questions(system: system, user: user)
+        case .copyPaste: throw RunnerError.copyPasteRequiresManualRun
+        }
+    }
+
+    private func openAIComplete(system: String, user: String, temperature: Double) async throws -> String {
+        let endpointURL = URL(string: endpoint) ?? URL(string: "https://api.openai.com/v1/chat/completions")!
+        let configuration = AIConfiguration(apiKey: apiKey, endpoint: endpointURL, model: model)
+        return try await AIClient().complete(
+            systemInstruction: system,
+            userPrompt: user,
+            configuration: configuration,
+            temperature: temperature
+        )
     }
 }

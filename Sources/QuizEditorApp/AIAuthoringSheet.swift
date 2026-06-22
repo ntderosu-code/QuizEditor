@@ -251,7 +251,7 @@ struct AIAuthoringSheet: View {
         let systemInstruction = service.systemInstruction(persona: persona)
         Task {
             do {
-                let raw = try await runner.run(system: systemInstruction, user: prompt, temperature: 0.7)
+                let raw = try await runner.runQuestions(system: systemInstruction, user: prompt, temperature: 0.7)
                 await MainActor.run {
                     isRunning = false
                     parse(raw)
