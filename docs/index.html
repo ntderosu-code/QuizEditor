@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Quiz Editor: QTI and Common Cartridge quiz authoring for macOS</title>
-<meta name="description" content="A free, private Mac app for writing rich, accessible quizzes and moving them in and out of any LMS through the open QTI and Common Cartridge formats. Works with Canvas, Brightspace, Blackboard, Moodle, and more. Nothing you write leaves your Mac.">
+<meta name="description" content="A free, private Mac app for writing rich, accessible quizzes and moving them in and out of any LMS through the open QTI and Common Cartridge formats. Discipline personas tune the checks and AI to your field, from nursing to chemistry to law. Works with Canvas, Brightspace, Blackboard, Moodle, and more. Nothing you write leaves your Mac.">
 <link rel="icon" type="image/png" href="screenshots/app-icon.png">
 <meta property="og:title" content="Quiz Editor">
 <meta property="og:description" content="Write better quizzes. Open them in any LMS. A free, private Mac app for accessible quiz writing, built on open formats.">
@@ -296,6 +296,24 @@
   .foot .flinks a:hover { color: var(--ink); }
   .foot-row { margin-top: 2rem; }
 
+  /* ---- Persona discipline board (type as imagery) ---- */
+  .persona-layout { display: grid; gap: clamp(2rem, 5vw, 4rem); grid-template-columns: 1fr; align-items: start; margin-top: 2.4rem; }
+  @media (min-width: 920px) { .persona-layout { grid-template-columns: 0.95fr 1.05fr; } }
+  .disc-board { background: var(--paper-2); border: 1px solid var(--line); border-radius: var(--radius); padding: clamp(1.2rem, 3vw, 1.9rem); }
+  .disc-active { display: flex; align-items: center; gap: 0.55rem; margin: 0 0 0.2rem; padding-bottom: 1rem; border-bottom: 1px solid var(--line); font-size: var(--step-0); color: var(--ink); }
+  .disc-active b { color: var(--indigo); font-weight: 600; }
+  .disc-fam { font-size: var(--step--1); color: var(--teal-deep); font-weight: 600; letter-spacing: 0.02em; margin: 1.3rem 0 0.6rem; }
+  .disc { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+  .chip {
+    font-family: "Spline Sans Mono", ui-monospace, monospace; font-size: var(--step--1);
+    border: 1.5px solid var(--line-strong); color: var(--ink-soft);
+    padding: 0.4em 0.7em; border-radius: 8px; display: inline-flex; align-items: center; gap: 0.5em;
+  }
+  .chip .dot { inline-size: 0.5em; block-size: 0.5em; border-radius: 50%; background: var(--line-strong); }
+  .chip.on { border-color: var(--indigo); color: var(--ink); background: color-mix(in oklch, var(--indigo) 9%, transparent); }
+  .chip.on .dot { background: var(--teal); }
+  .disc-note { margin: 1.5rem 0 0; font-size: var(--step--1); color: var(--ink-soft); }
+
   /* ---- Reveal motion ---- */
   .js .reveal { opacity: 0; transform: translateY(18px); }
   .js .reveal.in { opacity: 1; transform: none; transition: opacity 0.7s cubic-bezier(0.16,1,0.3,1), transform 0.7s cubic-bezier(0.16,1,0.3,1); }
@@ -326,6 +344,7 @@
     <nav class="links" aria-label="Primary">
       <a href="#authoring">Authoring</a>
       <a href="#review">AI &amp; review</a>
+      <a href="#personas">Personas</a>
       <a href="#access">Accessibility</a>
       <a href="#contribute">Contribute</a>
       <a class="btn btn-primary ghbtn" href="https://github.com/ntderosu-code/QuizEditor/releases">Download</a>
@@ -349,7 +368,7 @@
           <span class="lbl mono">choose the right answer</span>
         </div>
         <h1 class="hero-title reveal d1">Write better quizzes. Open them in <span class="em">any LMS</span>.</h1>
-        <p class="lede reveal d2">A free Mac app for writing rich, accessible quizzes and moving them in and out of whatever you teach with. It speaks the open <strong>QTI</strong> and <strong>Common Cartridge</strong> formats, so your questions go straight into Canvas, Brightspace, Blackboard, Moodle, and the rest. Optional AI helps you sharpen each question, and <strong>nothing you write ever leaves your Mac</strong>.</p>
+        <p class="lede reveal d2">A free Mac app for writing rich, accessible quizzes and moving them in and out of whatever you teach with. It speaks the open <strong>QTI</strong> and <strong>Common Cartridge</strong> formats, so your questions go straight into Canvas, Brightspace, Blackboard, Moodle, and the rest. It tunes itself to your discipline, optional AI helps you sharpen each question, and <strong>nothing you write ever leaves your Mac</strong>.</p>
         <div class="hero-cta reveal d3">
           <a class="btn btn-primary" href="https://github.com/ntderosu-code/QuizEditor/releases">Download for macOS</a>
           <a class="btn btn-ghost" href="https://github.com/ntderosu-code/QuizEditor">View on GitHub</a>
@@ -376,6 +395,7 @@
         <span class="stamp"><span class="dot"></span>.quizeditor</span>
       </div>
       <p class="lms-line reveal d2"><b>Imports and exports:</b> Canvas, Brightspace, Blackboard, Moodle, D2L, and any system that speaks QTI or Common Cartridge.</p>
+      <p class="lms-line reveal d2"><b>Maps to competencies:</b> tie questions to a framework like NCLEX, ABET, CSWE EPAS, or Bloom's, define your own, and get a coverage report that shows where the gaps are.</p>
       <p class="note reveal d3">Every QTI export is checked before it is written: <b>well-formed XML, a consistent manifest, and a clean re-import</b> that yields the same questions. Problems surface in the app, not after you upload.</p>
     </div>
   </section>
@@ -386,9 +406,10 @@
       <div class="ftext reveal">
         <p class="eyebrow"><span class="bubble filled" aria-hidden="true"></span> Authoring</p>
         <h2 class="sec">A real editor for every kind of question.</h2>
-        <p>Multiple choice, multiple answer, true/false, fill-in-the-blank, short answer, essay, and matching. Write your prompts and feedback with proper formatting, <strong>images, tables, and links that stay intact</strong> when you export. An image can't leave the app until it has alt text.</p>
+        <p>Multiple choice, multiple answer, true/false, fill-in-the-blank, short answer, essay, matching, and <strong>numeric answers graded by a margin, a range, or precision</strong>. Write your prompts and feedback with proper formatting, <strong>images, tables, and links that stay intact</strong> when you export. An image can't leave the app until it has alt text.</p>
         <ul class="checklist">
           <li><span class="bubble filled" aria-hidden="true"></span><span><b>Tag, rate, and weight</b> every question with topics, difficulty, and points.</span></li>
+          <li><span class="bubble filled" aria-hidden="true"></span><span><b>Link the whole item:</b> tie a question to learning objectives, the sources it draws on, and a reusable case or passage written once and shared across questions.</span></li>
           <li><span class="bubble filled" aria-hidden="true"></span><span><b>Find anything fast</b> with live sidebar search, tag and difficulty filters, and a quick-switch palette.</span></li>
           <li><span class="bubble filled" aria-hidden="true"></span><span><b>Reorder by dragging</b>, duplicate in a keystroke, and undo any structural change.</span></li>
         </ul>
@@ -411,12 +432,71 @@ Type: Multiple Choice
       <div class="ftext reveal">
         <p class="eyebrow"><span class="bubble filled" aria-hidden="true"></span> Review &amp; AI</p>
         <h2 class="sec">A second read for your questions, not just your spelling.</h2>
-        <p>A built-in check looks over every question as you write, right on your Mac, and points out the problems experienced test-writers watch for: <strong>a question with no correct answer marked, a "not" or "except" that's easy to miss, one answer that's tellingly longer than the others, an "all of the above," a missing feedback note</strong>. It needs no internet and sees nothing but your own file.</p>
+        <p>A built-in check looks over every question as you write, right on your Mac, and points out the problems experienced test-writers watch for: <strong>a question with no correct answer marked, a "not" or "except" that's easy to miss, one answer that's tellingly longer than the others, an "all of the above," a missing feedback note</strong>. It needs no internet and sees nothing but your own file. Pick a <a href="#personas">discipline</a> and these checks grow field-specific.</p>
         <p>Want a closer look? The <strong>AI Assistant</strong> works on the whole quiz or a single question: it suggests a clearer rewrite you accept one field at a time, and drafts fresh questions, answer choices, and feedback. Use Apple's on-device models, connect your own AI service, or copy a prompt into any chatbot and paste the reply back. Long quizzes are paged into batches that fit Apple's on-device models and stitched back into one document, so length is never a wall. Your questions stay with you.</p>
       </div>
       <div class="shot reveal d1">
         <img src="screenshots/ai-review.png" width="2704" height="1784" loading="lazy"
              alt="The AI Review sheet: a short critique of a question, a list of item-writing improvements, and a before-and-after rewrite of the prompt you apply field by field.">
+      </div>
+    </div>
+  </section>
+
+  <!-- DISCIPLINE PERSONAS -->
+  <section class="pad" id="personas">
+    <div class="wrap">
+      <p class="eyebrow reveal"><span class="bubble filled" aria-hidden="true"></span> Discipline personas</p>
+      <h2 class="sec reveal d1">Good questions are good in different ways. Pick your field.</h2>
+      <p class="sec-lede reveal d1">A strong nursing item, a strong chemistry item, and a strong history item earn it for different reasons. Choose a discipline persona and the editor bakes in that field's item-writing practices across the whole app at once, while everything stays local, private, and accessible.</p>
+      <div class="persona-layout">
+        <div class="reveal d1">
+          <ul class="checklist">
+            <li><span class="bubble filled" aria-hidden="true"></span><span><b>Field-specific checks.</b> The offline reviewer adds your discipline's rules, like a nursing "select all that apply" count cue, a chemistry answer missing its units, or a stigmatizing term where person-first language belongs.</span></li>
+            <li><span class="bubble filled" aria-hidden="true"></span><span><b>AI that knows the conventions.</b> Reviews, rewrites, and drafted questions follow your field's voice, distractor strategy, and safety rules, and never invent a dose or a citation.</span></li>
+            <li><span class="bubble filled" aria-hidden="true"></span><span><b>Terminology, item types, and standards.</b> Preferred wording, the question types your field leans on, and the competency framework it maps to.</span></li>
+            <li><span class="bubble filled" aria-hidden="true"></span><span><b>Yours to change.</b> Every persona is editable and forkable in a guided editor, no JSON, and shareable as a single file. The built-ins are a starting point, not a cage.</span></li>
+          </ul>
+        </div>
+        <div class="disc-board reveal d2" role="img" aria-label="Twenty-one discipline personas, grouped into five families, Health, Natural sciences, STEM, Social sciences, and Humanities, with Nursing currently selected.">
+          <p class="disc-active mono"><span class="bubble filled" aria-hidden="true"></span> Persona: <b>Nursing</b></p>
+          <p class="disc-fam">Health</p>
+          <div class="disc">
+            <span class="chip on"><span class="dot"></span>Nursing</span>
+            <span class="chip"><span class="dot"></span>Medicine</span>
+            <span class="chip"><span class="dot"></span>Pharmacy</span>
+            <span class="chip"><span class="dot"></span>Public Health</span>
+          </div>
+          <p class="disc-fam">Natural sciences</p>
+          <div class="disc">
+            <span class="chip"><span class="dot"></span>Biology</span>
+            <span class="chip"><span class="dot"></span>Chemistry</span>
+          </div>
+          <p class="disc-fam">STEM</p>
+          <div class="disc">
+            <span class="chip"><span class="dot"></span>Physics</span>
+            <span class="chip"><span class="dot"></span>Computer Science</span>
+            <span class="chip"><span class="dot"></span>Engineering</span>
+            <span class="chip"><span class="dot"></span>Mathematics</span>
+            <span class="chip"><span class="dot"></span>Statistics</span>
+          </div>
+          <p class="disc-fam">Social sciences</p>
+          <div class="disc">
+            <span class="chip"><span class="dot"></span>Social Work</span>
+            <span class="chip"><span class="dot"></span>Counseling</span>
+            <span class="chip"><span class="dot"></span>Economics</span>
+            <span class="chip"><span class="dot"></span>Law</span>
+            <span class="chip"><span class="dot"></span>Political Science</span>
+            <span class="chip"><span class="dot"></span>Psychology</span>
+            <span class="chip"><span class="dot"></span>Sociology</span>
+          </div>
+          <p class="disc-fam">Humanities</p>
+          <div class="disc">
+            <span class="chip"><span class="dot"></span>History</span>
+            <span class="chip"><span class="dot"></span>Literature</span>
+            <span class="chip"><span class="dot"></span>Philosophy</span>
+          </div>
+          <p class="disc-note">Twenty-one built in, plus any you write yourself.</p>
+        </div>
       </div>
     </div>
   </section>
