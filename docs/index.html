@@ -303,15 +303,17 @@
   .disc-active { display: flex; align-items: center; gap: 0.55rem; margin: 0 0 0.2rem; padding-bottom: 1rem; border-bottom: 1px solid var(--line); font-size: var(--step-0); color: var(--ink); }
   .disc-active b { color: var(--indigo); font-weight: 600; }
   .disc-fam { font-size: var(--step--1); color: var(--teal-deep); font-weight: 600; letter-spacing: 0.02em; margin: 1.3rem 0 0.6rem; }
-  .disc { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+  .disc { display: flex; flex-wrap: wrap; gap: 0.4rem 1.15rem; }
+  /* Disciplines are labels, not controls: no border, no fill, nothing pressable.
+     Selected vs. not is shown by a filled vs. hollow bubble (the site's severity
+     motif) plus weight, so it never depends on color alone. */
   .chip {
     font-family: "Spline Sans Mono", ui-monospace, monospace; font-size: var(--step--1);
-    border: 1.5px solid var(--line-strong); color: var(--ink-soft);
-    padding: 0.4em 0.7em; border-radius: 8px; display: inline-flex; align-items: center; gap: 0.5em;
+    color: var(--ink-soft); display: inline-flex; align-items: center; gap: 0.5em;
   }
-  .chip .dot { inline-size: 0.5em; block-size: 0.5em; border-radius: 50%; background: var(--line-strong); }
-  .chip.on { border-color: var(--indigo); color: var(--ink); background: color-mix(in oklch, var(--indigo) 9%, transparent); }
-  .chip.on .dot { background: var(--teal); }
+  .chip .dot { inline-size: 0.5em; block-size: 0.5em; border-radius: 50%; border: 1.5px solid var(--line-strong); background: none; }
+  .chip.on { color: var(--indigo); font-weight: 600; }
+  .chip.on .dot { background: var(--teal); border-color: var(--teal); }
   .disc-note { margin: 1.5rem 0 0; font-size: var(--step--1); color: var(--ink-soft); }
 
   /* ---- Reveal motion ---- */
