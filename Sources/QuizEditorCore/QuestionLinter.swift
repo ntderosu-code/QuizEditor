@@ -30,6 +30,7 @@ public struct LintFinding: Equatable, Sendable, Identifiable {
         public static let emptyOption = Rule("emptyOption")
         public static let missingFeedback = Rule("missingFeedback")
         public static let articleCue = Rule("articleCue")
+        public static let recallDrift = Rule("recallDrift")
     }
 
     public let rule: Rule
@@ -48,6 +49,20 @@ public struct LintFinding: Equatable, Sendable, Identifiable {
         self.message = message
         self.suggestion = suggestion
     }
+}
+
+/// The resolved linking entities a question references (issue #23), supplied to
+/// the linter so checks that depend on linked data — recall-drift needs an
+/// objective's cognitive level — can see it. Empty by default for the per-question
+/// API; the quiz-wide API builds it from the quiz's entity tables.
+public struct QuestionLinkContext: Sendable, Equatable {
+    public var linkedObjectives: [LearningObjective]
+
+    public init(linkedObjectives: [LearningObjective] = []) {
+        self.linkedObjectives = linkedObjectives
+    }
+
+    public static let empty = QuestionLinkContext()
 }
 
 extension PersonaSeverity {
@@ -88,8 +103,10 @@ public struct QuestionLinter: Sendable {
 
     /// Findings for one question under `persona`, ordered most-severe first. The
     /// persona can disable or re-weight built-in rules and contributes its own
-    /// declarative and lexicon findings; General leaves the built-ins untouched.
-    public func findings(for question: QuizQuestion, persona: Persona) -> [LintFinding] {
+    /// declarative, lexicon, and recall-drift findings; General leaves the
+    /// built-ins untouched. `context` supplies resolved linked entities for checks
+    /// that need them (recall-drift); pass `.empty` when there are no links.
+    public func findings(for question: QuizQuestion, persona: Persona, context: QuestionLinkContext = .empty) -> [LintFinding] {
         var builtIn: [LintFinding] = []
 
         builtIn.append(contentsOf: answerKeyFindings(question))
@@ -103,6 +120,9 @@ public struct QuestionLinter: Sendable {
         var findings = applyOverrides(builtIn, profile: persona.linterProfile)
         findings.append(contentsOf: declarativeFindings(question, profile: persona.linterProfile))
         findings.append(contentsOf: lexiconFindings(question, terminology: persona.terminology))
+        if persona.linterProfile.checksRecallDrift, let drift = recallDriftFinding(question, context: context) {
+            findings.append(drift)
+        }
 
         return findings.sorted { lhs, rhs in
             severityRank(lhs.severity) < severityRank(rhs.severity)
@@ -115,11 +135,17 @@ public struct QuestionLinter: Sendable {
     }
 
     /// Findings for every question in a quiz under `persona`, keyed by question
-    /// id. Questions with no findings are omitted.
+    /// id. Resolves each question's linked objectives from the quiz so context-
+    /// dependent checks work. Questions with no findings are omitted.
     public func findings(for quiz: Quiz, persona: Persona) -> [QuizQuestion.ID: [LintFinding]] {
+        let objectivesByID = Dictionary(quiz.objectives.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+
         var result: [QuizQuestion.ID: [LintFinding]] = [:]
         for question in quiz.questions {
-            let questionFindings = findings(for: question, persona: persona)
+            let context = QuestionLinkContext(
+                linkedObjectives: question.objectiveIDs.compactMap { objectivesByID[$0] }
+            )
+            let questionFindings = findings(for: question, persona: persona, context: context)
             if !questionFindings.isEmpty {
                 result[question.id] = questionFindings
             }
@@ -166,6 +192,12 @@ public struct QuestionLinter: Sendable {
             }
             if !triggered, let forbidden = rule.forbidsPattern, !forbidden.isEmpty {
                 if matches(forbidden, in: text) { triggered = true }
+            }
+            if !triggered, rule.requiresStimulus, question.stimulusID == nil {
+                triggered = true
+            }
+            if !triggered, rule.requiresSource, question.sourceIDs.isEmpty {
+                triggered = true
             }
             guard triggered else { return nil }
 
@@ -239,6 +271,27 @@ public struct QuestionLinter: Sendable {
     private func wholeWordMatches(_ term: String, in text: String) -> Bool {
         let escaped = NSRegularExpression.escapedPattern(for: term)
         return matches("\\b\(escaped)\\b", in: text)
+    }
+
+    // MARK: - Recall-drift (shared primitive)
+
+    /// Flags an item linked to a higher-order objective (apply/analyze and up)
+    /// whose stem only asks for recall. Quiet unless the persona opts in and the
+    /// item actually links such an objective, so it never fires on General.
+    private func recallDriftFinding(_ question: QuizQuestion, context: QuestionLinkContext) -> LintFinding? {
+        let hasHigherOrderObjective = context.linkedObjectives.contains { $0.cognitiveLevel?.isHigherOrder == true }
+        guard hasHigherOrderObjective else { return nil }
+
+        let stem = plain(question.prompt)
+        let recallStem = "^\\s*(define|list|name|state|identify|label|recall|what is|who is|when did|when was)\\b"
+        guard matches(recallStem, in: stem) else { return nil }
+
+        return LintFinding(
+            rule: .recallDrift,
+            severity: .suggestion,
+            message: "This item is linked to a higher-order objective but the stem only asks for recall.",
+            suggestion: "Raise the task to match the objective (apply, analyze, or evaluate), or link a recall-level objective."
+        )
     }
 
     // MARK: - Answer-key rules

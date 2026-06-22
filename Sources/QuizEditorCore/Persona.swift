@@ -117,6 +117,12 @@ public struct PersonaLinterRule: Codable, Sendable, Equatable, Identifiable {
     public var itemTypes: [QuizQuestionType]
     /// Gate: only evaluate at these difficulties (empty = any/unspecified).
     public var difficulties: [QuizDifficulty]
+    /// Link trigger: fires when the question has NO linked stimulus (issue #23),
+    /// e.g. "a clinical-judgment item lacks a vignette."
+    public var requiresStimulus: Bool
+    /// Link trigger: fires when the question links NO source (issue #23), e.g.
+    /// "a source-based item lacks attribution."
+    public var requiresSource: Bool
     public var severity: PersonaSeverity
     public var message: String
     public var suggestion: String
@@ -128,6 +134,8 @@ public struct PersonaLinterRule: Codable, Sendable, Equatable, Identifiable {
         forbidsPattern: String? = nil,
         itemTypes: [QuizQuestionType] = [],
         difficulties: [QuizDifficulty] = [],
+        requiresStimulus: Bool = false,
+        requiresSource: Bool = false,
         severity: PersonaSeverity = .suggestion,
         message: String,
         suggestion: String
@@ -138,6 +146,8 @@ public struct PersonaLinterRule: Codable, Sendable, Equatable, Identifiable {
         self.forbidsPattern = forbidsPattern
         self.itemTypes = itemTypes
         self.difficulties = difficulties
+        self.requiresStimulus = requiresStimulus
+        self.requiresSource = requiresSource
         self.severity = severity
         self.message = message
         self.suggestion = suggestion
@@ -151,13 +161,16 @@ public struct PersonaLinterRule: Codable, Sendable, Equatable, Identifiable {
         forbidsPattern = try c.decodeIfPresent(String.self, forKey: .forbidsPattern)
         itemTypes = try c.decodeIfPresent([QuizQuestionType].self, forKey: .itemTypes) ?? []
         difficulties = try c.decodeIfPresent([QuizDifficulty].self, forKey: .difficulties) ?? []
+        requiresStimulus = try c.decodeIfPresent(Bool.self, forKey: .requiresStimulus) ?? false
+        requiresSource = try c.decodeIfPresent(Bool.self, forKey: .requiresSource) ?? false
         severity = try c.decodeIfPresent(PersonaSeverity.self, forKey: .severity) ?? .suggestion
         message = try c.decodeIfPresent(String.self, forKey: .message) ?? ""
         suggestion = try c.decodeIfPresent(String.self, forKey: .suggestion) ?? ""
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, scope, requiresPattern, forbidsPattern, itemTypes, difficulties, severity, message, suggestion
+        case id, scope, requiresPattern, forbidsPattern, itemTypes, difficulties
+        case requiresStimulus, requiresSource, severity, message, suggestion
     }
 }
 
@@ -165,19 +178,28 @@ public struct PersonaLinterProfile: Codable, Sendable, Equatable {
     /// Built-in rule id → override. Built-in ids match `LintFinding.Rule`.
     public var ruleOverrides: [String: PersonaRuleOverride]
     public var declarativeRules: [PersonaLinterRule]
+    /// Enables the shared recall-drift primitive (issue #23): flag an item linked
+    /// to a higher-order objective whose stem only asks for recall.
+    public var checksRecallDrift: Bool
 
-    public init(ruleOverrides: [String: PersonaRuleOverride] = [:], declarativeRules: [PersonaLinterRule] = []) {
+    public init(
+        ruleOverrides: [String: PersonaRuleOverride] = [:],
+        declarativeRules: [PersonaLinterRule] = [],
+        checksRecallDrift: Bool = false
+    ) {
         self.ruleOverrides = ruleOverrides
         self.declarativeRules = declarativeRules
+        self.checksRecallDrift = checksRecallDrift
     }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         ruleOverrides = try c.decodeIfPresent([String: PersonaRuleOverride].self, forKey: .ruleOverrides) ?? [:]
         declarativeRules = try c.decodeIfPresent([PersonaLinterRule].self, forKey: .declarativeRules) ?? []
+        checksRecallDrift = try c.decodeIfPresent(Bool.self, forKey: .checksRecallDrift) ?? false
     }
 
-    private enum CodingKeys: String, CodingKey { case ruleOverrides, declarativeRules }
+    private enum CodingKeys: String, CodingKey { case ruleOverrides, declarativeRules, checksRecallDrift }
 }
 
 /// Guidance the AI features will fold into their prompts. Inert until the
@@ -371,7 +393,8 @@ public extension Persona {
         for (key, value) in linterProfile.ruleOverrides { overrides[key] = value }
         result.linterProfile = PersonaLinterProfile(
             ruleOverrides: overrides,
-            declarativeRules: Persona.mergedByID(base.linterProfile.declarativeRules, linterProfile.declarativeRules)
+            declarativeRules: Persona.mergedByID(base.linterProfile.declarativeRules, linterProfile.declarativeRules),
+            checksRecallDrift: base.linterProfile.checksRecallDrift || linterProfile.checksRecallDrift
         )
 
         // AI: scalars prefer the child when set; lists append base-then-child.
