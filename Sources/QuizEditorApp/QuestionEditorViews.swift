@@ -130,14 +130,6 @@ struct QuestionEditor: View {
 
                 QuestionMetadataEditor(question: $question)
 
-                QuestionLinkingSection(
-                    question: $question,
-                    objectives: $objectives,
-                    sources: $sources,
-                    stimuli: $stimuli,
-                    frameworks: frameworks
-                )
-
                 if let reviewError {
                     aiMessageBox(reviewError, title: "AI Review") { self.reviewError = nil }
                 }
