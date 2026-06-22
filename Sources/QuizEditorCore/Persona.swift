@@ -183,17 +183,21 @@ public struct PersonaLinterProfile: Codable, Sendable, Equatable {
     public var checksRecallDrift: Bool
     /// Opt-in gate (#25): flag an item that links no competency/standard.
     public var requiresCompetency: Bool
+    /// Opt-in (#19 Phase 4): flag a numeric item that has no expected unit set.
+    public var requiresNumericUnit: Bool
 
     public init(
         ruleOverrides: [String: PersonaRuleOverride] = [:],
         declarativeRules: [PersonaLinterRule] = [],
         checksRecallDrift: Bool = false,
-        requiresCompetency: Bool = false
+        requiresCompetency: Bool = false,
+        requiresNumericUnit: Bool = false
     ) {
         self.ruleOverrides = ruleOverrides
         self.declarativeRules = declarativeRules
         self.checksRecallDrift = checksRecallDrift
         self.requiresCompetency = requiresCompetency
+        self.requiresNumericUnit = requiresNumericUnit
     }
 
     public init(from decoder: Decoder) throws {
@@ -202,9 +206,10 @@ public struct PersonaLinterProfile: Codable, Sendable, Equatable {
         declarativeRules = try c.decodeIfPresent([PersonaLinterRule].self, forKey: .declarativeRules) ?? []
         checksRecallDrift = try c.decodeIfPresent(Bool.self, forKey: .checksRecallDrift) ?? false
         requiresCompetency = try c.decodeIfPresent(Bool.self, forKey: .requiresCompetency) ?? false
+        requiresNumericUnit = try c.decodeIfPresent(Bool.self, forKey: .requiresNumericUnit) ?? false
     }
 
-    private enum CodingKeys: String, CodingKey { case ruleOverrides, declarativeRules, checksRecallDrift, requiresCompetency }
+    private enum CodingKeys: String, CodingKey { case ruleOverrides, declarativeRules, checksRecallDrift, requiresCompetency, requiresNumericUnit }
 }
 
 /// Guidance the AI features will fold into their prompts. Inert until the
@@ -406,7 +411,8 @@ public extension Persona {
             ruleOverrides: overrides,
             declarativeRules: Persona.mergedByID(base.linterProfile.declarativeRules, linterProfile.declarativeRules),
             checksRecallDrift: base.linterProfile.checksRecallDrift || linterProfile.checksRecallDrift,
-            requiresCompetency: base.linterProfile.requiresCompetency || linterProfile.requiresCompetency
+            requiresCompetency: base.linterProfile.requiresCompetency || linterProfile.requiresCompetency,
+            requiresNumericUnit: base.linterProfile.requiresNumericUnit || linterProfile.requiresNumericUnit
         )
 
         // AI: scalars prefer the child when set; lists append base-then-child.

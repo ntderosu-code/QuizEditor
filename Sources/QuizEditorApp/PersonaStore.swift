@@ -70,10 +70,14 @@ final class PersonaStore: ObservableObject {
     // MARK: - Loading
 
     static func loadAll() -> [Persona] {
-        // General is always first and always present. User personas follow, and a
-        // user file can never shadow a built-in id.
+        // General is always first, followed by the built-in discipline packs. User
+        // personas follow, and a user file can never shadow a built-in id.
         var byID: [String: Persona] = [Persona.generalID: .general]
         var order: [String] = [Persona.generalID]
+        for pack in Persona.builtInDisciplines where byID[pack.id] == nil {
+            byID[pack.id] = pack
+            order.append(pack.id)
+        }
         for persona in loadUserPersonas() where byID[persona.id] == nil {
             byID[persona.id] = persona
             order.append(persona.id)

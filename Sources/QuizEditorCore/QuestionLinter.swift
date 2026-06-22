@@ -32,6 +32,7 @@ public struct LintFinding: Equatable, Sendable, Identifiable {
         public static let articleCue = Rule("articleCue")
         public static let recallDrift = Rule("recallDrift")
         public static let noCompetencyLinked = Rule("noCompetencyLinked")
+        public static let numericMissingUnit = Rule("numericMissingUnit")
     }
 
     public let rule: Rule
@@ -130,6 +131,15 @@ public struct QuestionLinter: Sendable {
                 severity: .suggestion,
                 message: "This item is not linked to any competency or standard.",
                 suggestion: "Link it to a framework node so it counts toward competency coverage."
+            ))
+        }
+        if persona.linterProfile.requiresNumericUnit, question.type == .numeric,
+           (question.numeric?.expectedUnit ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            findings.append(LintFinding(
+                rule: .numericMissingUnit,
+                severity: .suggestion,
+                message: "This numeric item has no expected unit.",
+                suggestion: "Set the expected unit (e.g. mg, mL) so the quantity is unambiguous. The unit is for authoring only — your LMS grades the number alone."
             ))
         }
 
