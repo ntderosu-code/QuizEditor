@@ -369,57 +369,138 @@ struct QuestionReviewSheet: View {
 struct AnswerEditor: View {
     @Binding var question: QuizQuestion
 
+    /// Leading column width so the label, selector, and text fields line up and the
+    /// misconception note indents under the text field.
+    private let gutter: CGFloat = 58
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
+            HStack(spacing: 8) {
                 Text("Answers")
                     .font(.subheadline.weight(.semibold))
+                Text(usesSingleCorrectAnswer ? "Select the one correct answer." : "Check every correct answer.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 Spacer()
-                Button {
-                    addAnswer()
-                } label: {
-                    Label("Add Answer", systemImage: "plus")
-                }
             }
 
             ForEach($question.answers) { $answer in
-                let number = (question.answers.firstIndex { $0.id == answer.id } ?? 0) + 1
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 10) {
-                        Toggle("Correct", isOn: correctBinding(for: answer.id))
-                            .toggleStyle(.checkbox)
-                            .frame(width: 90, alignment: .leading)
-                            .accessibilityLabel("Answer \(number) is correct")
-                        TextField("Answer text", text: $answer.text)
-                            .textFieldStyle(.roundedBorder)
-                            .accessibilityLabel("Answer \(number) text")
-                        Button(role: .destructive) {
-                            question.answers.removeAll { $0.id == answer.id }
-                        } label: {
-                            Image(systemName: "minus.circle")
-                        }
-                        .buttonStyle(.borderless)
-                        .accessibilityLabel("Remove answer \(number)")
-                    }
-
-                    // A distractor can name the misconception it targets (#25 / Phase 3).
-                    if showsMisconception, !answer.isCorrect {
-                        HStack(spacing: 10) {
-                            Spacer().frame(width: 90)
-                            Image(systemName: "lightbulb")
-                                .foregroundStyle(.secondary)
-                                .accessibilityHidden(true)
-                            TextField("Misconception this distractor targets (optional)", text: misconceptionBinding(for: answer.id))
-                                .textFieldStyle(.roundedBorder)
-                                .font(.caption)
-                                .accessibilityLabel("Answer \(number) misconception")
-                        }
-                    }
-                }
+                answerRow($answer)
             }
+
+            // "Add answer" sits directly under the list it extends.
+            Button(action: addAnswer) {
+                Label("Add answer", systemImage: "plus")
+            }
+            .buttonStyle(.bordered)
+
+            answerValidation
         }
         .onChange(of: question.type) {
             normalizeAnswersForQuestionType()
+        }
+    }
+
+    @ViewBuilder
+    private func answerRow(_ answer: Binding<QuizAnswer>) -> some View {
+        let index = question.answers.firstIndex { $0.id == answer.wrappedValue.id } ?? 0
+        let letter = Self.answerLetter(index)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text(letter)
+                    .font(.callout.weight(.semibold).monospaced())
+                    .frame(width: 18, alignment: .leading)
+                    .accessibilityHidden(true)
+
+                correctSelector(for: answer.wrappedValue.id, letter: letter, isCorrect: answer.wrappedValue.isCorrect)
+
+                TextField("Answer text", text: answer.text)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityLabel("Answer \(letter) text")
+
+                Button(role: .destructive) {
+                    question.answers.removeAll { $0.id == answer.wrappedValue.id }
+                } label: {
+                    Image(systemName: "minus.circle")
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Remove answer \(letter)")
+            }
+
+            // A distractor can name the misconception it targets (#25 / Phase 3).
+            if showsMisconception, !answer.wrappedValue.isCorrect {
+                HStack(spacing: 8) {
+                    Spacer().frame(width: gutter)
+                    Image(systemName: "lightbulb")
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                    TextField("Misconception this distractor targets (optional)", text: misconceptionBinding(for: answer.wrappedValue.id))
+                        .textFieldStyle(.roundedBorder)
+                        .font(.caption)
+                        .accessibilityLabel("Answer \(letter) misconception note")
+                }
+            }
+        }
+    }
+
+    /// Single-select questions use a radio so only one answer can ever be correct;
+    /// multi-select uses a checkbox. Both carry an answer-specific accessible name.
+    @ViewBuilder
+    private func correctSelector(for answerID: UUID, letter: String, isCorrect: Bool) -> some View {
+        if usesSingleCorrectAnswer {
+            Button {
+                markOnlyCorrect(answerID)
+            } label: {
+                Image(systemName: isCorrect ? "largecircle.fill.circle" : "circle")
+                    .imageScale(.large)
+                    .foregroundStyle(isCorrect ? Color.accentColor : .secondary)
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel("Mark answer \(letter) as correct")
+            .accessibilityAddTraits(isCorrect ? .isSelected : [])
+            .help("Mark answer \(letter) as the correct answer")
+        } else {
+            Toggle("", isOn: correctBinding(for: answerID))
+                .toggleStyle(.checkbox)
+                .labelsHidden()
+                .accessibilityLabel("Mark answer \(letter) as correct")
+        }
+    }
+
+    /// Answer-related readiness problems (no/extra key, too few choices, blanks,
+    /// duplicates), shown right under the list so validation is where the user is
+    /// working. Reuses the deterministic Core checks so the rules can't drift.
+    @ViewBuilder
+    private var answerValidation: some View {
+        let relevant: Set<String> = ["key", "choices", "blanks", "duplicates"]
+        let issues = QuestionReadiness(question: question).checks
+            .filter { relevant.contains($0.id) && !$0.isSatisfied }
+        if !issues.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(issues) { issue in
+                    Label {
+                        Text(issue.message).font(.caption)
+                    } icon: {
+                        Image(systemName: issue.severity == .required ? "exclamationmark.triangle.fill" : "exclamationmark.circle")
+                            .accessibilityHidden(true)
+                    }
+                    .foregroundStyle(issue.severity == .required ? .red : .orange)
+                    .accessibilityLabel("\(issue.title) problem: \(issue.message)")
+                }
+            }
+            .padding(.top, 2)
+        }
+    }
+
+    private static func answerLetter(_ index: Int) -> String {
+        index < 26 ? String(UnicodeScalar(UInt8(65 + index))) : "\(index + 1)"
+    }
+
+    /// Sets exactly one answer correct (single-select). A radio can only select, so
+    /// single-answer questions can never end up with two correct options.
+    private func markOnlyCorrect(_ answerID: UUID) {
+        for i in question.answers.indices {
+            question.answers[i].isCorrect = (question.answers[i].id == answerID)
         }
     }
 
