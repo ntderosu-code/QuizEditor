@@ -4,11 +4,16 @@ public struct Quiz: Equatable, Codable, Identifiable, Sendable {
     public var id: UUID
     public var title: String
     public var questions: [QuizQuestion]
+    /// Per-quiz persona override. `nil` means "use the app default persona."
+    /// Optional, so the synthesized decoder treats a missing key as `nil` and
+    /// quizzes saved before personas existed keep opening unchanged.
+    public var personaID: String?
 
-    public init(id: UUID = UUID(), title: String, questions: [QuizQuestion] = []) {
+    public init(id: UUID = UUID(), title: String, questions: [QuizQuestion] = [], personaID: String? = nil) {
         self.id = id
         self.title = title
         self.questions = questions
+        self.personaID = personaID
     }
 
     public static let sample = Quiz(

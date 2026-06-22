@@ -178,8 +178,17 @@ struct ContentView: View {
     @State private var qtiValidation: QTIValidationContext?
     @State private var pendingExportEngine: CanvasQuizEngine?
     @State private var isIMSCCImporterPresented = false
+    @StateObject private var personaStore = PersonaStore()
+    @AppStorage("personaID") private var appDefaultPersonaID = Persona.generalID
+    @State private var isPersonaSheetPresented = false
 
     private var lintFindings: [UUID: [LintFinding]] { QuestionLinter().findings(for: quiz) }
+
+    /// The persona in effect for this quiz: its own override, else the app default,
+    /// else General. Phase 0 surfaces it in the UI but nothing consumes it yet.
+    private var activePersona: Persona {
+        personaStore.resolve(quiz.personaID ?? appDefaultPersonaID)
+    }
 
     /// A binding to the currently selected question's element in the quiz, so the
     /// AI panel's item-level tools can read and write it directly. Nil when nothing
@@ -353,6 +362,30 @@ struct ContentView: View {
                     Label("Quality Check", systemImage: "checklist")
                 }
                 .help("Run the offline item-writing linter across the whole quiz")
+
+                Menu {
+                    Picker("Persona", selection: $quiz.personaID) {
+                        Text("App Default (\(personaStore.resolve(appDefaultPersonaID).displayName))")
+                            .tag(String?.none)
+                        ForEach(personaStore.personas) { persona in
+                            Text(persona.displayName).tag(Optional(persona.id))
+                        }
+                    }
+                    .pickerStyle(.inline)
+
+                    Divider()
+
+                    Button {
+                        isPersonaSheetPresented = true
+                    } label: {
+                        Label("Manage Personas…", systemImage: "slider.horizontal.3")
+                    }
+                    .keyboardShortcut("p", modifiers: [.command, .option])
+                } label: {
+                    Label("Persona: \(activePersona.displayName)", systemImage: "person.crop.rectangle")
+                }
+                .menuIndicator(.hidden)
+                .help("Choose the discipline persona for this quiz (⌥⌘P to manage)")
             }
 
             ToolbarSpacer(.fixed)
@@ -428,6 +461,9 @@ struct ContentView: View {
         }
         .sheet(isPresented: $isLintSheetPresented) {
             QuizLintSheet(quiz: quiz) { id in selectedQuestionID = id }
+        }
+        .sheet(isPresented: $isPersonaSheetPresented) {
+            PersonaManagementSheet(personas: personaStore.personas, quizPersonaID: $quiz.personaID)
         }
         .sheet(item: $importPickerContext) { context in
             ImportPickerSheet(
