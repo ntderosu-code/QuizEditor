@@ -25,8 +25,23 @@ struct SidebarView: View {
     @State private var searchText = ""
     @State private var difficultyFilter: QuizDifficulty?
     @State private var tagFilter: String?
+    @State private var readinessFilter: ReadinessFilter = .all
 
     private let html = HTMLUtilities()
+
+    /// Deterministic readiness filter for the navigator: everything, only questions
+    /// that still need work (draft or needs-work), or only the ready ones.
+    enum ReadinessFilter: String, CaseIterable, Identifiable {
+        case all, needsWork, ready
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .all: "All"
+            case .needsWork: "Needs work"
+            case .ready: "Ready"
+            }
+        }
+    }
 
     /// Questions matching the active search + filters, keeping their 1-based numbers.
     private var visibleQuestions: [(number: Int, question: QuizQuestion)] {
@@ -35,6 +50,11 @@ struct SidebarView: View {
             if let difficultyFilter, question.difficulty != difficultyFilter { return nil }
             if let tagFilter, !question.tags.contains(where: { $0.caseInsensitiveCompare(tagFilter) == .orderedSame }) {
                 return nil
+            }
+            switch readinessFilter {
+            case .all: break
+            case .needsWork: if QuestionReadiness(question: question).status == .ready { return nil }
+            case .ready: if QuestionReadiness(question: question).status != .ready { return nil }
             }
             if !needle.isEmpty {
                 let haystack = (html.plainText(fromHTML: question.prompt) + " "
@@ -48,7 +68,7 @@ struct SidebarView: View {
 
     private var isFiltering: Bool {
         !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            || difficultyFilter != nil || tagFilter != nil
+            || difficultyFilter != nil || tagFilter != nil || readinessFilter != .all
     }
 
     private var hasFilterableMetadata: Bool {
@@ -124,20 +144,33 @@ struct SidebarView: View {
             .background(Color(nsColor: .textBackgroundColor), in: .rect(cornerRadius: 8))
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.2)))
 
-            if hasFilterableMetadata {
-                HStack(spacing: 8) {
-                    filterMenu
-                    if isFiltering {
-                        Button("Clear") {
-                            searchText = ""
-                            difficultyFilter = nil
-                            tagFilter = nil
-                        }
-                        .font(.caption)
-                        .buttonStyle(.borderless)
+            HStack(spacing: 8) {
+                Picker("Readiness", selection: $readinessFilter) {
+                    ForEach(ReadinessFilter.allCases) { filter in
+                        Text(filter.label).tag(filter)
                     }
-                    Spacer(minLength: 0)
                 }
+                .pickerStyle(.menu)
+                .labelsHidden()
+                .controlSize(.small)
+                .fixedSize()
+                .accessibilityLabel("Filter by readiness")
+
+                if hasFilterableMetadata {
+                    filterMenu
+                }
+
+                if isFiltering {
+                    Button("Clear") {
+                        searchText = ""
+                        difficultyFilter = nil
+                        tagFilter = nil
+                        readinessFilter = .all
+                    }
+                    .font(.caption)
+                    .buttonStyle(.borderless)
+                }
+                Spacer(minLength: 0)
             }
         }
         .padding(.horizontal, 12)
@@ -220,6 +253,10 @@ struct SidebarQuestionRow: View {
         return text.isEmpty ? "Untitled question" : text
     }
 
+    private var status: ReadinessStatus {
+        QuestionReadiness(question: question).status
+    }
+
     var body: some View {
         // No manual selection coloring: the enclosing List inverts foreground colors
         // for the selected row automatically, which also adapts to Increase Contrast.
@@ -245,6 +282,11 @@ struct SidebarQuestionRow: View {
                             .background(Color.secondary.opacity(0.15))
                             .clipShape(.capsule)
                     }
+                    // Surface only the questions that still need attention; a ready
+                    // question stays uncluttered.
+                    if status != .ready {
+                        ReadinessBadge(status: status)
+                    }
                 }
             }
             Spacer(minLength: 0)
@@ -259,6 +301,7 @@ struct SidebarQuestionRow: View {
     private var accessibilityLabel: String {
         var label = "Question \(number), \(question.type.displayName)"
         if let difficulty = question.difficulty { label += ", \(difficulty.displayName)" }
+        label += ", \(status.label)"
         label += ": \(plainPrompt)"
         if !findings.isEmpty {
             let warnings = findings.filter { $0.severity == .warning }.count
