@@ -236,9 +236,44 @@ public struct CanvasQTIExporter: Sendable {
                 <defaultValue><value>0</value></defaultValue>
             </outcomeDeclaration>
         \(body)
-            <responseProcessing template="http://www.imsglobal.org/question/qti_v2p1/rptemplates/match_correct"/>
+        \(question.type == .numeric ? qti21NumericResponseProcessing(for: question) : "    <responseProcessing template=\"http://www.imsglobal.org/question/qti_v2p1/rptemplates/match_correct\"/>")
         \(feedback)
         </assessmentItem>
+        """
+    }
+
+    /// QTI 2.1 response processing for a numeric item: scores 1 when the response
+    /// falls in the accepted interval (value±margin or range), or equals the value
+    /// for precision/exact. No condition is emitted for an unconfigured question.
+    private func qti21NumericResponseProcessing(for question: QuizQuestion) -> String {
+        guard let numeric = question.numeric else {
+            return "    <responseProcessing/>"
+        }
+        let test: String
+        if let interval = numeric.acceptedInterval, interval.low != interval.high {
+            test = """
+                            <and>
+                                <gte><variable identifier="RESPONSE"/><baseValue baseType="float">\(formatNumber(interval.low))</baseValue></gte>
+                                <lte><variable identifier="RESPONSE"/><baseValue baseType="float">\(formatNumber(interval.high))</baseValue></lte>
+                            </and>
+            """
+        } else if let value = numeric.value ?? numeric.acceptedInterval?.low {
+            test = """
+                            <equal toleranceMode="exact"><variable identifier="RESPONSE"/><baseValue baseType="float">\(formatNumber(value))</baseValue></equal>
+            """
+        } else {
+            return "    <responseProcessing/>"
+        }
+
+        return """
+            <responseProcessing>
+                <responseCondition>
+                    <responseIf>
+        \(test)
+                        <setOutcomeValue identifier="SCORE"><baseValue baseType="float">1</baseValue></setOutcomeValue>
+                    </responseIf>
+                </responseCondition>
+            </responseProcessing>
         """
     }
 
@@ -261,6 +296,15 @@ public struct CanvasQTIExporter: Sendable {
             return classicChoicePresentation(question, cardinality: "Multiple")
         case .multipleChoice, .trueFalse:
             return classicChoicePresentation(question, cardinality: "Single")
+        case .numeric:
+            return """
+                <presentation>
+                    <material><mattext texttype="text/html">\(xmlEscape(question.prompt))</mattext></material>
+                    <response_str ident="response1" rcardinality="Single">
+                        <render_fib fibtype="Decimal" prompt="Box" rows="1" columns="20"/>
+                    </response_str>
+                </presentation>
+            """
         }
     }
 
@@ -320,6 +364,11 @@ public struct CanvasQTIExporter: Sendable {
 
     private func qti21ResponseDeclaration(for question: QuizQuestion) -> String {
         switch question.type {
+        case .numeric:
+            let representative = question.numeric?.value
+                ?? question.numeric?.acceptedInterval.map { ($0.low + $0.high) / 2 }
+            let correct = representative.map { "<correctResponse><value>\(formatNumber($0))</value></correctResponse>" } ?? ""
+            return "    <responseDeclaration identifier=\"RESPONSE\" cardinality=\"single\" baseType=\"float\">\(correct)</responseDeclaration>"
         case .essay:
             return "    <responseDeclaration identifier=\"RESPONSE\" cardinality=\"single\" baseType=\"string\"/>"
         case .matching:
@@ -360,6 +409,13 @@ public struct CanvasQTIExporter: Sendable {
                 <itemBody>
                     <div>\(inlineXHTML(question.prompt))</div>
                     <textEntryInteraction responseIdentifier="RESPONSE" expectedLength="40"/>
+                </itemBody>
+            """
+        case .numeric:
+            return """
+                <itemBody>
+                    <div>\(inlineXHTML(question.prompt))</div>
+                    <textEntryInteraction responseIdentifier="RESPONSE" expectedLength="20"/>
                 </itemBody>
             """
         case .matching:
@@ -417,9 +473,56 @@ public struct CanvasQTIExporter: Sendable {
             """
         case .matching:
             return classicMatchingResponseProcessing(question)
+        case .numeric:
+            return classicNumericResponseProcessing(question)
         default:
             return classicAnswerResponseProcessing(question)
         }
+    }
+
+    /// Numeric grading as QTI 1.2 response conditions Canvas understands: a single
+    /// exact value uses `varequal`; a value±margin or a range uses an inclusive
+    /// `vargte`/`varlte` pair. An unconfigured question emits no scoring condition.
+    private func classicNumericResponseProcessing(_ question: QuizQuestion) -> String {
+        var condition = ""
+        if let numeric = question.numeric {
+            if let interval = numeric.acceptedInterval {
+                if interval.low == interval.high {
+                    condition = """
+                            <respcondition title="correct" continue="No">
+                                <conditionvar><varequal respident="response1">\(formatNumber(interval.low))</varequal></conditionvar>
+                                <setvar action="Set" varname="SCORE">100</setvar>
+                            </respcondition>
+                    """
+                } else {
+                    condition = """
+                            <respcondition title="correct" continue="No">
+                                <conditionvar><and>
+                                    <vargte respident="response1">\(formatNumber(interval.low))</vargte>
+                                    <varlte respident="response1">\(formatNumber(interval.high))</varlte>
+                                </and></conditionvar>
+                                <setvar action="Set" varname="SCORE">100</setvar>
+                            </respcondition>
+                    """
+                }
+            } else if numeric.mode == .precision, let value = numeric.value {
+                // QTI 1.2 can't express significant-digit precision, so it degrades
+                // to an exact match on the value.
+                condition = """
+                        <respcondition title="correct" continue="No">
+                            <conditionvar><varequal respident="response1">\(formatNumber(value))</varequal></conditionvar>
+                            <setvar action="Set" varname="SCORE">100</setvar>
+                        </respcondition>
+                """
+            }
+        }
+
+        return """
+            <resprocessing>
+                <outcomes><decvar maxvalue="100" minvalue="0" varname="SCORE" vartype="Decimal"/></outcomes>
+        \(condition)
+            </resprocessing>
+        """
     }
 
     private func classicAnswerResponseProcessing(_ question: QuizQuestion) -> String {
@@ -477,6 +580,11 @@ public struct CanvasQTIExporter: Sendable {
 
     private func formatPoints(_ points: Double) -> String {
         points.rounded() == points ? String(Int(points)) : String(points)
+    }
+
+    /// Formats a numeric answer/bound, dropping a trailing ".0" for whole numbers.
+    private func formatNumber(_ value: Double) -> String {
+        value.rounded() == value ? String(Int(value)) : String(value)
     }
 
     /// Optional Canvas-tolerated metadata fields for tags and difficulty. Canvas

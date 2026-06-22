@@ -99,7 +99,7 @@ public struct PaperExamBuilder: Sendable {
         switch question.type {
         case .multipleChoice, .multipleAnswer, .trueFalse:
             parts.append(choiceBlock(question, options: options))
-        case .shortAnswer, .fillInBlank:
+        case .shortAnswer, .fillInBlank, .numeric:
             parts.append(writeInBlock(question, options: options, lines: 1))
         case .essay:
             parts.append(essayBlock())

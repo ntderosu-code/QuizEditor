@@ -208,6 +208,10 @@ public struct QTIImporter: Sendable {
             return QuizQuestion(type: .matching, prompt: prompt, matches: pairs, feedback: classicFeedback(in: xml))
         }
 
+        if type == .numeric {
+            return QuizQuestion(type: .numeric, prompt: prompt, feedback: classicFeedback(in: xml), numeric: parseClassicNumeric(in: xml))
+        }
+
         let correctIDs = Set(matches(pattern: #"<varequal[^>]*>([^<]+)</varequal>"#, in: xml))
         let answers = matches(pattern: #"<response_label\s+ident=\"([^\"]+)\"[^>]*>[\s\S]*?<mattext[^>]*>([\s\S]*?)</mattext>"#, in: xml, groupCount: 2)
             .map { QuizAnswer(text: renderField($0[1]), isCorrect: correctIDs.contains($0[0])) }
@@ -247,8 +251,22 @@ public struct QTIImporter: Sendable {
         case "short_answer_question": return .shortAnswer
         case "essay_question": return .essay
         case "matching_question": return .matching
+        case "numerical_question": return .numeric
         default: return .multipleChoice
         }
+    }
+
+    /// Recovers a numeric answer from QTI 1.2 response processing: a vargte/varlte
+    /// pair becomes a range; a lone varequal becomes an exact value.
+    private func parseClassicNumeric(in xml: String) -> NumericAnswer {
+        if let low = matches(pattern: #"<vargte[^>]*>([^<]+)</vargte>"#, in: xml).first.flatMap({ Double($0.trimmingCharacters(in: .whitespaces)) }),
+           let high = matches(pattern: #"<varlte[^>]*>([^<]+)</varlte>"#, in: xml).first.flatMap({ Double($0.trimmingCharacters(in: .whitespaces)) }) {
+            return NumericAnswer(mode: .range, rangeMin: low, rangeMax: high)
+        }
+        if let value = matches(pattern: #"<varequal[^>]*>([^<]+)</varequal>"#, in: xml).first.flatMap({ Double($0.trimmingCharacters(in: .whitespaces)) }) {
+            return NumericAnswer(mode: .exact, value: value)
+        }
+        return NumericAnswer()
     }
 
     private func firstFieldEntry(afterFieldLabel label: String, in xml: String) -> String? {
