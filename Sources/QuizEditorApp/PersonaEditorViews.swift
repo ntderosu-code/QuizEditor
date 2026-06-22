@@ -216,6 +216,7 @@ struct PersonaEditorSheet: View {
                 TextField("e.g. Each distractor is a plausible-but-unsafe action.", text: optionalText($draft.aiProfile.distractorStrategy))
                     .textFieldStyle(.roundedBorder)
             }
+            Toggle("Label generated distractors with the misconception they target", isOn: $draft.aiProfile.labelsMisconceptions)
             LabeledField("Tone") {
                 TextField("e.g. Formal, clinical.", text: optionalText($draft.aiProfile.tone))
                     .textFieldStyle(.roundedBorder)

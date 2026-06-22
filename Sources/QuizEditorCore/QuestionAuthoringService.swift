@@ -97,20 +97,48 @@ public struct QuestionAuthoringService: Sendable {
         { "distractors": ["first distractor", "second distractor"] }
         """
 
-        return base + PersonaPrompt.textSection(title: "Distractor strategy:", persona.aiProfile.distractorStrategy)
+        let misconceptions = persona.aiProfile.labelsMisconceptions ? """
+
+
+        For each distractor, also name the misconception it targets. Use this shape instead:
+        { "distractors": [{"text": "the distractor", "misconception": "the misconception it reflects"}] }
+        """ : ""
+
+        return base
+            + misconceptions
+            + PersonaPrompt.textSection(title: "Distractor strategy:", persona.aiProfile.distractorStrategy)
     }
 
     public func parseDistractors(_ raw: String) -> [String] {
-        // Accept either {"distractors": [...]} or a bare JSON array.
-        if let json = extractJSONObject(from: raw),
-           let data = json.data(using: .utf8),
-           let dto = try? JSONDecoder().decode(DistractorsDTO.self, from: data) {
-            return dto.distractors.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        parseLabeledDistractors(raw).map(\.text)
+    }
+
+    /// One generated distractor with the misconception it targets, if the model
+    /// labeled it.
+    public struct LabeledDistractor: Equatable, Sendable {
+        public let text: String
+        public let misconception: String?
+
+        public init(text: String, misconception: String?) {
+            self.text = text
+            self.misconception = misconception
+        }
+    }
+
+    /// Parses distractors with optional misconception labels, tolerating every
+    /// shape the model might return: `{"distractors": [...]}` or a bare array,
+    /// where each element is either a plain string or `{"text","misconception"}`.
+    public func parseLabeledDistractors(_ raw: String) -> [LabeledDistractor] {
+        if let object = extractJSONObject(from: raw),
+           let data = object.data(using: .utf8),
+           let dto = try? JSONDecoder().decode(LabeledDistractorsDTO.self, from: data) {
+            let labeled = dto.distractors.compactMap { $0.asLabeled }
+            if !labeled.isEmpty { return labeled }
         }
         if let array = extractJSONArray(from: raw),
            let data = array.data(using: .utf8),
-           let values = try? JSONDecoder().decode([String].self, from: data) {
-            return values.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+           let items = try? JSONDecoder().decode([DistractorItemDTO].self, from: data) {
+            return items.compactMap { $0.asLabeled }
         }
         return []
     }
@@ -247,8 +275,34 @@ public struct QuestionAuthoringService: Sendable {
         let feedback: String?
     }
 
-    private struct DistractorsDTO: Decodable {
-        let distractors: [String]
+    /// A distractor that may arrive as a bare string or as {"text","misconception"}.
+    private struct DistractorItemDTO: Decodable {
+        let text: String
+        let misconception: String?
+
+        init(from decoder: Decoder) throws {
+            if let single = try? decoder.singleValueContainer().decode(String.self) {
+                text = single
+                misconception = nil
+                return
+            }
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            text = try c.decode(String.self, forKey: .text)
+            misconception = try c.decodeIfPresent(String.self, forKey: .misconception)
+        }
+
+        private enum CodingKeys: String, CodingKey { case text, misconception }
+
+        var asLabeled: LabeledDistractor? {
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return nil }
+            let tag = misconception?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return LabeledDistractor(text: trimmed, misconception: (tag?.isEmpty ?? true) ? nil : tag)
+        }
+    }
+
+    private struct LabeledDistractorsDTO: Decodable {
+        let distractors: [DistractorItemDTO]
     }
 
     private struct FeedbackDTO: Decodable {
