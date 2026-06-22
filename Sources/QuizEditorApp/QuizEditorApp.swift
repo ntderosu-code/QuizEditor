@@ -185,7 +185,13 @@ struct ContentView: View {
     @State private var isCoverageSheetPresented = false
     @State private var isFrameworkSheetPresented = false
 
-    private var lintFindings: [UUID: [LintFinding]] { QuestionLinter().findings(for: quiz, persona: activePersona) }
+    /// Cached quiz-wide lint, recomputed only when the quiz or active persona
+    /// changes (not on every render — selection, sheet toggles, etc.).
+    @State private var lintFindings: [UUID: [LintFinding]] = [:]
+
+    private func recomputeLintFindings() {
+        lintFindings = QuestionLinter().findings(for: quiz, persona: activePersona)
+    }
 
     /// The persona in effect for this quiz: its own override, else the app default,
     /// else General. The linter reads it so inline lint, the sidebar status dot,
@@ -438,7 +444,11 @@ struct ContentView: View {
             if selectedQuestionID == nil {
                 selectedQuestionID = quiz.questions.first?.id
             }
+            recomputeLintFindings()
         }
+        .onChange(of: quiz) { recomputeLintFindings() }
+        .onChange(of: appDefaultPersonaID) { recomputeLintFindings() }
+        .onChange(of: personaStore.personas) { recomputeLintFindings() }
         .sheet(isPresented: $isImporterPresented, onDismiss: presentPendingImportPicker) {
             ImportSheet(
                 importText: $importText,
