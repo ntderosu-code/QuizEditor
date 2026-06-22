@@ -7,14 +7,19 @@ import Foundation
 public struct QuestionAuthoringService: Sendable {
     public init() {}
 
-    public var systemInstruction: String {
-        """
-        You are an expert instructional designer authoring assessment items. Follow established \
-        item-writing guidelines: one clear problem per stem, plausible distractors based on common \
-        misconceptions, options parallel in grammar and length, no "all/none of the above", no \
-        absolute terms, and accessible language that never relies on color or images without alt text. \
-        Return only the requested JSON.
-        """
+    /// The author system role, with the persona's preamble prepended (no-op for
+    /// General). Defaulting `persona` keeps existing callers building today's role.
+    public func systemInstruction(persona: Persona = .general) -> String {
+        PersonaPrompt.systemInstruction(
+            base: """
+            You are an expert instructional designer authoring assessment items. Follow established \
+            item-writing guidelines: one clear problem per stem, plausible distractors based on common \
+            misconceptions, options parallel in grammar and length, no "all/none of the above", no \
+            absolute terms, and accessible language that never relies on color or images without alt text. \
+            Return only the requested JSON.
+            """,
+            persona: persona
+        )
     }
 
     // MARK: - Generate whole questions
@@ -23,14 +28,15 @@ public struct QuestionAuthoringService: Sendable {
         topic: String,
         count: Int,
         types: [QuizQuestionType],
-        additionalInstructions: String = ""
+        additionalInstructions: String = "",
+        persona: Persona = .general
     ) -> String {
         let typeList = (types.isEmpty ? QuizQuestionType.allCases : types)
             .map { "\($0.rawValue) (\($0.displayName))" }
             .joined(separator: ", ")
         let extra = additionalInstructions.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        return """
+        let base = """
         Write \(count) quiz question(s) about the following topic or learning objective:
         \(topic)
 
@@ -60,6 +66,11 @@ public struct QuestionAuthoringService: Sendable {
         - For essay, omit "answers" and "matches".
         - Always include "feedback".
         """
+
+        return base
+            + PersonaPrompt.guidelineSection(title: "Additional discipline-specific authoring guidelines:", persona.aiProfile.authoringGuidelines)
+            + PersonaPrompt.textSection(title: "Distractor strategy:", persona.aiProfile.distractorStrategy)
+            + PersonaPrompt.guidelineSection(title: "Examples of strong items in this discipline:", persona.exemplars)
     }
 
     public func parseGeneratedQuestions(_ raw: String) -> [QuizQuestion] {
@@ -73,8 +84,8 @@ public struct QuestionAuthoringService: Sendable {
 
     // MARK: - Generate distractors
 
-    public func makeDistractorsPrompt(prompt: String, correctAnswer: String, count: Int) -> String {
-        """
+    public func makeDistractorsPrompt(prompt: String, correctAnswer: String, count: Int, persona: Persona = .general) -> String {
+        let base = """
         For this question stem and its correct answer, write \(count) plausible but incorrect answer \
         options (distractors). Base them on common misconceptions. Keep them parallel in grammar and \
         length with the correct answer, and make each one clearly wrong on close reading.
@@ -85,6 +96,8 @@ public struct QuestionAuthoringService: Sendable {
         Respond with ONLY a JSON object, no prose and no code fences:
         { "distractors": ["first distractor", "second distractor"] }
         """
+
+        return base + PersonaPrompt.textSection(title: "Distractor strategy:", persona.aiProfile.distractorStrategy)
     }
 
     public func parseDistractors(_ raw: String) -> [String] {
@@ -104,7 +117,12 @@ public struct QuestionAuthoringService: Sendable {
 
     // MARK: - Generate feedback
 
-    public func makeFeedbackPrompt(question: QuizQuestion, quizTitle: String) -> String {
+    public func makeFeedbackPrompt(
+        question: QuizQuestion,
+        quizTitle: String,
+        persona: Persona = .general,
+        linkedContext: PromptLinkContext = .empty
+    ) -> String {
         let answerLines: String
         if question.type == .matching {
             answerLines = question.matches.map { "- \($0.prompt) => \($0.match)" }.joined(separator: "\n")
@@ -112,7 +130,7 @@ public struct QuestionAuthoringService: Sendable {
             answerLines = question.answers.map { "\($0.isCorrect ? "*" : "-") \($0.text)" }.joined(separator: "\n")
         }
 
-        return """
+        let base = """
         Draft concise feedback for this quiz question from "\(quizTitle)". Explain why the correct \
         answer is correct and why the distractors are plausible but wrong. Use accessible language.
 
@@ -122,6 +140,11 @@ public struct QuestionAuthoringService: Sendable {
         Respond with ONLY a JSON object, no prose and no code fences:
         { "feedback": "the feedback text" }
         """
+
+        return base
+            + PersonaPrompt.linkedContextSection(linkedContext)
+            + PersonaPrompt.guidelineSection(title: "Additional discipline-specific feedback guidelines:", persona.aiProfile.feedbackGuidelines)
+            + PersonaPrompt.safetySection(persona.aiProfile.safetyClauses)
     }
 
     public func parseFeedback(_ raw: String) -> String? {

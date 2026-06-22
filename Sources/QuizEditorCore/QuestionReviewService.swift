@@ -37,12 +37,22 @@ public struct QuestionReview: Equatable, Sendable {
 public struct QuestionReviewService: Sendable {
     public init() {}
 
-    public var systemInstruction: String {
-        "You are an expert instructional designer and assessment writer reviewing one quiz question. Apply established item-writing guidelines and return only the requested JSON."
+    /// The reviewer system role, with the persona's preamble prepended (no-op for
+    /// General). Defaulting `persona` keeps existing callers building today's role.
+    public func systemInstruction(persona: Persona = .general) -> String {
+        PersonaPrompt.systemInstruction(
+            base: "You are an expert instructional designer and assessment writer reviewing one quiz question. Apply established item-writing guidelines and return only the requested JSON.",
+            persona: persona
+        )
     }
 
-    public func makePrompt(question: QuizQuestion, quizTitle: String) -> String {
-        """
+    public func makePrompt(
+        question: QuizQuestion,
+        quizTitle: String,
+        persona: Persona = .general,
+        linkedContext: PromptLinkContext = .empty
+    ) -> String {
+        let base = """
         Review this single quiz question from the quiz titled "\(quizTitle)".
 
         Evaluate it against these item-writing guidelines (look beyond grammar and spelling):
@@ -79,6 +89,11 @@ public struct QuestionReviewService: Sendable {
         - Include ONLY the fields you would actually change; omit unchanged fields and omit "revised" entirely if nothing needs rewording.
         - Use "answers" for choice-based questions and "matches" only for matching questions.
         """
+
+        return base
+            + PersonaPrompt.linkedContextSection(linkedContext)
+            + PersonaPrompt.guidelineSection(title: "Additional discipline-specific review guidelines:", persona.aiProfile.reviewGuidelines)
+            + PersonaPrompt.safetySection(persona.aiProfile.safetyClauses)
     }
 
     public func parse(_ raw: String, original: QuizQuestion) -> QuestionReview {
@@ -96,15 +111,21 @@ public struct QuestionReviewService: Sendable {
 
     /// Prompts for a review of several questions at once, returning a JSON array
     /// keyed by `index`. Used by the paginated whole-quiz review (a page at a time).
-    public func makeBatchPrompt(questions: [QuizQuestion], quizTitle: String) -> String {
+    public func makeBatchPrompt(
+        questions: [QuizQuestion],
+        quizTitle: String,
+        persona: Persona = .general,
+        contexts: [PromptLinkContext] = []
+    ) -> String {
         let items = questions.enumerated().map { index, question in
-            """
+            let context = index < contexts.count ? contexts[index] : .empty
+            return """
             --- Question index \(index) (type: \(question.type.displayName)) ---
-            \(questionMarkedText(question))
+            \(questionMarkedText(question))\(PersonaPrompt.linkedContextSection(context))
             """
         }.joined(separator: "\n\n")
 
-        return """
+        let base = """
         Review these \(questions.count) quiz question(s) from the quiz titled "\(quizTitle)".
 
         Evaluate each against these item-writing guidelines (look beyond grammar and spelling):
@@ -142,6 +163,10 @@ public struct QuestionReviewService: Sendable {
         - Include ONLY the fields you would actually change; omit "revised" entirely if nothing needs rewording.
         - Omit a question's object entirely if it has no issues.
         """
+
+        return base
+            + PersonaPrompt.guidelineSection(title: "Additional discipline-specific review guidelines:", persona.aiProfile.reviewGuidelines)
+            + PersonaPrompt.safetySection(persona.aiProfile.safetyClauses)
     }
 
     /// Parses the batched JSON array into one review per original question, in
