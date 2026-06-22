@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quiz Editor: QTI and Common Cartridge quiz authoring for macOS</title>
+<meta name="description" content="A native macOS app for authoring, AI-reviewing, and round-tripping accessible quizzes through QTI and IMS Common Cartridge, for Canvas, Brightspace, Blackboard, Moodle, and any LMS that reads the standards.">
+<link rel="icon" type="image/png" href="screenshots/app-icon.png">
+<meta property="og:title" content="Quiz Editor">
+<meta property="og:description" content="Write better questions. Export them to any LMS. A native macOS quiz authoring app built on open standards.">
+<meta property="og:image" content="screenshots/editor.png">
+<meta property="og:type" content="website">
+<meta name="theme-color" content="#5b56d6">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script>document.documentElement.classList.add('js');</script>
+<style>
+  /* ============================================================
+     Quiz Editor landing page
+     Aesthetic: Scantron / OMR examination instrument.
+     Committed periwinkle + teal, drawn from the app's bubble-sheet icon.
+     Light = exam paper under daylight. Dark = late-night drafting.
+     Display: Bricolage Grotesque. Body: San Francisco (the app's own type).
+     Mono: Spline Sans Mono, only for literal formats and bubble labels.
+     ============================================================ */
+
+  :root {
+    /* Light: exam paper */
+    --paper:      oklch(0.985 0.006 286);
+    --paper-2:    oklch(0.955 0.010 286);
+    --ink:        oklch(0.23 0.030 286);
+    --ink-soft:   oklch(0.46 0.024 286);
+    --line:       oklch(0.89 0.013 286);
+    --line-strong:oklch(0.80 0.020 286);
+    --indigo:     oklch(0.52 0.170 285);   /* text/links on paper, AA */
+    --indigo-fill:oklch(0.55 0.165 285);   /* button fills */
+    --indigo-deep:oklch(0.40 0.150 286);   /* drenched band */
+    --teal:       oklch(0.70 0.105 200);   /* filled bubble / "correct" */
+    --teal-deep:  oklch(0.52 0.085 200);
+    --pen:        oklch(0.56 0.180 25);     /* the marking pen, used once or twice */
+    --on-indigo:  oklch(0.975 0.010 286);
+    --shadow:     0.30 0.03 286;
+
+    --radius: 14px;
+    --tick: oklch(0.84 0.015 286);
+
+    --maxw: 1160px;
+    --gutter: clamp(1.25rem, 5vw, 4rem);
+
+    --step--1: clamp(0.86rem, 0.83rem + 0.15vw, 0.95rem);
+    --step-0:  clamp(1.02rem, 0.98rem + 0.2vw, 1.15rem);
+    --step-1:  clamp(1.3rem, 1.2rem + 0.5vw, 1.6rem);
+    --step-2:  clamp(1.7rem, 1.45rem + 1.2vw, 2.4rem);
+    --step-3:  clamp(2.3rem, 1.8rem + 2.4vw, 3.6rem);
+    --step-4:  clamp(2.9rem, 2.0rem + 4.4vw, 5.4rem);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      /* Dark: drafting after hours */
+      --paper:      oklch(0.205 0.026 286);
+      --paper-2:    oklch(0.255 0.030 286);
+      --ink:        oklch(0.945 0.012 286);
+      --ink-soft:   oklch(0.74 0.022 286);
+      --line:       oklch(0.34 0.030 286);
+      --line-strong:oklch(0.44 0.034 286);
+      --indigo:     oklch(0.76 0.150 286);
+      --indigo-fill:oklch(0.62 0.170 285);
+      --indigo-deep:oklch(0.34 0.110 286);
+      --teal:       oklch(0.78 0.110 200);
+      --teal-deep:  oklch(0.68 0.095 200);
+      --pen:        oklch(0.68 0.165 25);
+      --on-indigo:  oklch(0.97 0.010 286);
+      --shadow:     0.05 0.03 286;
+      --tick:       oklch(0.40 0.024 286);
+    }
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Segoe UI", sans-serif;
+    font-size: var(--step-0);
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    /* faint bubble-grid, the exam-form texture */
+    background-image:
+      radial-gradient(circle at center, color-mix(in oklch, var(--ink) 4%, transparent) 0 1.1px, transparent 1.4px);
+    background-size: 26px 26px;
+    background-position: -6px -6px;
+  }
+
+  h1, h2, h3 {
+    font-family: "Bricolage Grotesque", -apple-system, system-ui, sans-serif;
+    font-weight: 700;
+    line-height: 1.04;
+    letter-spacing: -0.015em;
+    margin: 0;
+    text-wrap: balance;
+  }
+
+  a { color: var(--indigo); text-underline-offset: 3px; text-decoration-thickness: 1.5px; }
+  a:hover { color: var(--ink); }
+
+  img { max-width: 100%; height: auto; display: block; }
+
+  :focus-visible {
+    outline: 3px solid var(--indigo);
+    outline-offset: 3px;
+    border-radius: 4px;
+  }
+
+  .mono {
+    font-family: "Spline Sans Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-feature-settings: "ss01";
+  }
+
+  .wrap { max-width: var(--maxw); margin-inline: auto; padding-inline: var(--gutter); }
+
+  /* ---- Skip link ---- */
+  .skip {
+    position: absolute; left: 0.6rem; top: 0.6rem; z-index: 100;
+    background: var(--ink); color: var(--paper); padding: 0.6em 1em;
+    border-radius: 8px; transform: translateY(-150%); transition: transform 0.2s;
+  }
+  .skip:focus { transform: none; }
+
+  /* ---- Answer bubbles (the through-line) ---- */
+  .bubble {
+    display: inline-block;
+    inline-size: 0.82em; block-size: 0.82em;
+    border: 2px solid var(--line-strong);
+    border-radius: 50%;
+    vertical-align: -0.05em;
+    flex: 0 0 auto;
+  }
+  .bubble.filled { background: var(--teal); border-color: var(--teal); box-shadow: inset 0 0 0 2px var(--paper); }
+  .bubblerow { display: flex; align-items: center; gap: 0.7rem; }
+  .bubblerow .lbl { font-size: 0.78em; color: var(--ink-soft); letter-spacing: 0.04em; }
+
+  /* ---- Header ---- */
+  header.site {
+    position: sticky; top: 0; z-index: 50;
+    background: color-mix(in oklch, var(--paper) 86%, transparent);
+    backdrop-filter: saturate(1.4) blur(10px);
+    border-bottom: 1px solid var(--line);
+  }
+  .nav { display: flex; align-items: center; gap: 1.5rem; padding-block: 0.7rem; }
+  .brand { display: flex; align-items: center; gap: 0.6rem; font-weight: 600; color: var(--ink); text-decoration: none; letter-spacing: -0.01em; }
+  .brand img { inline-size: 30px; block-size: 30px; border-radius: 8px; }
+  .brand span { font-family: "Bricolage Grotesque", system-ui, sans-serif; font-size: 1.12rem; }
+  .nav .links { display: flex; gap: 1.4rem; margin-inline-start: auto; align-items: center; }
+  .nav .links a { color: var(--ink-soft); text-decoration: none; font-size: var(--step--1); font-weight: 500; }
+  .nav .links a:hover { color: var(--ink); }
+  .nav .ghbtn { display: none; }
+  @media (min-width: 720px) { .nav .ghbtn { display: inline-flex; } }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 0.5em;
+    font: inherit; font-weight: 600; font-size: var(--step--1);
+    padding: 0.7em 1.25em; border-radius: 10px;
+    text-decoration: none; cursor: pointer; border: 1.5px solid transparent;
+    transition: transform 0.18s cubic-bezier(0.22,1,0.36,1), background-color 0.18s, color 0.18s, border-color 0.18s;
+  }
+  .btn-primary { background: var(--indigo-fill); color: var(--on-indigo); }
+  .btn-primary:hover { color: var(--on-indigo); transform: translateY(-2px); background: color-mix(in oklch, var(--indigo-fill) 88%, var(--ink)); }
+  .btn-ghost { color: var(--ink); border-color: var(--line-strong); background: transparent; }
+  .btn-ghost:hover { color: var(--ink); border-color: var(--ink); transform: translateY(-2px); }
+  .btn-onindigo { background: var(--on-indigo); color: var(--indigo-deep); }
+  .btn-onindigo:hover { color: var(--indigo-deep); transform: translateY(-2px); background: color-mix(in oklch, var(--on-indigo) 90%, var(--teal)); }
+
+  /* ---- Hero ---- */
+  .hero { padding-block: clamp(2.5rem, 6vw, 5.5rem) clamp(2rem, 4vw, 3.5rem); position: relative; overflow: clip; }
+  .hero-grid { display: grid; gap: clamp(2rem, 5vw, 4rem); grid-template-columns: 1fr; align-items: center; }
+  @media (min-width: 980px) { .hero-grid { grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr); } }
+
+  .kicker { margin-bottom: 1.4rem; }
+  h1.hero-title { font-size: var(--step-4); font-weight: 800; max-width: 16ch; }
+  h1 .em { color: var(--indigo); position: relative; white-space: nowrap; }
+  h1 .em::after {
+    content: ""; position: absolute; left: 0; right: 0; bottom: 0.06em; height: 0.12em;
+    background: var(--teal); border-radius: 2px; opacity: 0.55;
+  }
+  .lede { font-size: var(--step-1); color: var(--ink-soft); max-width: 40ch; margin: 1.4rem 0 0; line-height: 1.45; font-weight: 400; }
+  .lede strong { color: var(--ink); font-weight: 600; }
+  .hero-cta { display: flex; flex-wrap: wrap; gap: 0.8rem; margin-top: 2rem; }
+  .hero-meta { margin-top: 1.8rem; font-size: var(--step--1); color: var(--ink-soft); letter-spacing: 0.02em; }
+  .hero-meta b { color: var(--teal-deep); font-weight: 500; }
+
+  .shot { position: relative; }
+  .shot::before {
+    content: ""; position: absolute; inset: -8% -6% -12% -6%; z-index: 0; border-radius: 50%;
+    background: radial-gradient(60% 60% at 60% 40%, color-mix(in oklch, var(--indigo) 28%, transparent), transparent 70%);
+    filter: blur(28px);
+  }
+  .shot img { position: relative; z-index: 1; border-radius: 12px; }
+  .hero .shot { margin-inline-end: calc(var(--gutter) * -0.5); }
+  @media (min-width: 980px) { .hero .shot img { width: 118%; max-width: none; } }
+
+  /* margin timing-ticks, a scantron edge */
+  .ticks { position: absolute; top: 0; bottom: 0; width: 8px; display: grid; gap: 14px; grid-auto-rows: 7px; align-content: center; pointer-events: none; }
+  .ticks span { background: var(--tick); border-radius: 1px; }
+  .ticks.left { left: clamp(0.3rem, 1.5vw, 1.1rem); }
+
+  /* ---- Generic section ---- */
+  section { position: relative; }
+  .pad { padding-block: clamp(3rem, 8vw, 6rem); }
+  .eyebrow { font-size: var(--step--1); color: var(--teal-deep); font-weight: 600; letter-spacing: 0.01em; margin: 0 0 0.7rem; display: flex; align-items: center; gap: 0.55rem; }
+  h2.sec { font-size: var(--step-3); max-width: 18ch; }
+  .sec-lede { font-size: var(--step-1); color: var(--ink-soft); max-width: 56ch; margin-top: 1.1rem; line-height: 1.5; }
+
+  /* alternating feature rows */
+  .feature { display: grid; gap: clamp(2rem, 5vw, 4.5rem); grid-template-columns: 1fr; align-items: center; }
+  @media (min-width: 920px) {
+    .feature { grid-template-columns: 1fr 1fr; }
+    .feature.flip .ftext { order: 2; }
+  }
+  .ftext { max-width: 52ch; }
+  .ftext p { color: var(--ink-soft); margin: 1rem 0 0; }
+  .ftext p strong { color: var(--ink); font-weight: 600; }
+
+  /* bubble checklist */
+  .checklist { list-style: none; margin: 1.6rem 0 0; padding: 0; display: grid; gap: 0.85rem; }
+  .checklist li { display: grid; grid-template-columns: auto 1fr; gap: 0.75rem; align-items: start; }
+  .checklist .bubble { margin-top: 0.34em; }
+  .checklist b { font-weight: 600; }
+  .checklist span { color: var(--ink-soft); }
+
+  /* ---- Drenched indigo band (standards) ---- */
+  .band { background: var(--indigo-deep); color: var(--on-indigo); }
+  .band a:not(.btn) { color: var(--on-indigo); }
+  .band .eyebrow { color: color-mix(in oklch, var(--teal) 75%, white); }
+  .band h2 { color: var(--on-indigo); }
+  .band .sec-lede { color: color-mix(in oklch, var(--on-indigo) 84%, transparent); max-width: 60ch; }
+  .stamps { display: flex; flex-wrap: wrap; gap: 0.7rem; margin-top: 2rem; }
+  .stamp {
+    font-family: "Spline Sans Mono", ui-monospace, monospace; font-size: var(--step--1);
+    border: 1.5px solid color-mix(in oklch, var(--on-indigo) 45%, transparent);
+    color: var(--on-indigo); padding: 0.5em 0.85em; border-radius: 8px;
+    display: inline-flex; align-items: center; gap: 0.5em; letter-spacing: 0.01em;
+  }
+  .stamp .dot { inline-size: 0.55em; block-size: 0.55em; border-radius: 50%; background: var(--teal); }
+  .lms-line { margin-top: 1.6rem; font-size: var(--step-0); color: color-mix(in oklch, var(--on-indigo) 88%, transparent); }
+  .lms-line b { font-weight: 600; }
+  .band .note {
+    margin-top: 2.2rem; padding-top: 1.6rem; max-width: 62ch;
+    border-top: 1px solid color-mix(in oklch, var(--on-indigo) 28%, transparent);
+    color: color-mix(in oklch, var(--on-indigo) 82%, transparent); font-size: var(--step-0);
+  }
+  .band .note b { color: var(--on-indigo); font-weight: 600; }
+
+  /* ---- Marked-text sample (type as imagery) ---- */
+  .sample {
+    background: var(--paper-2); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: clamp(1.1rem, 3vw, 1.8rem); margin: 0;
+    font-family: "Spline Sans Mono", ui-monospace, monospace;
+    font-size: var(--step--1); line-height: 1.8; color: var(--ink); overflow-x: auto;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .sample .k { color: var(--indigo); }
+  .sample .c { color: var(--teal-deep); font-weight: 500; }
+  .sample .d { color: var(--ink-soft); }
+  .sample .cap { color: var(--ink-soft); font-weight: 500; letter-spacing: 0.02em; }
+
+  /* ---- Accessibility band (deliberate dark, both modes) ---- */
+  .a11y { background: oklch(0.20 0.026 286); color: oklch(0.95 0.012 286); }
+  .a11y .eyebrow { color: oklch(0.80 0.10 200); }
+  .a11y h2 { color: oklch(0.97 0.01 286); }
+  .a11y .checklist span { color: oklch(0.80 0.015 286); }
+  .a11y .checklist b { color: oklch(0.97 0.01 286); }
+  .a11y .lead { font-size: var(--step-1); color: oklch(0.86 0.015 286); max-width: 50ch; line-height: 1.5; margin-top: 1.1rem; }
+  .a11y .bubble { border-color: oklch(0.55 0.03 286); }
+  .a11y .grid2 { display: grid; gap: clamp(1.5rem,4vw,3.5rem); grid-template-columns: 1fr; align-items: start; }
+  @media (min-width: 860px) { .a11y .grid2 { grid-template-columns: 0.85fr 1fr; } }
+
+  /* ---- Get started ---- */
+  .terminal {
+    background: oklch(0.18 0.024 286); color: oklch(0.92 0.012 286);
+    border-radius: var(--radius); padding: 1.3rem 1.4rem; overflow-x: auto;
+    font-family: "Spline Sans Mono", ui-monospace, monospace; font-size: var(--step--1); line-height: 1.9;
+    border: 1px solid oklch(0.32 0.03 286);
+  }
+  .terminal .p { color: oklch(0.70 0.10 200); user-select: none; }
+  .terminal .cmt { color: oklch(0.62 0.02 286); }
+  .start-grid { display: grid; gap: clamp(1.8rem, 4vw, 3.5rem); grid-template-columns: 1fr; align-items: center; }
+  @media (min-width: 880px) { .start-grid { grid-template-columns: 0.9fr 1.1fr; } }
+
+  /* ---- Footer ---- */
+  footer.site { border-top: 1px solid var(--line); padding-block: clamp(2.5rem, 5vw, 3.5rem); }
+  .foot { display: flex; flex-wrap: wrap; gap: 1.4rem 2rem; align-items: center; justify-content: space-between; }
+  .foot .brand span { font-size: 1rem; }
+  .foot p { margin: 0; color: var(--ink-soft); font-size: var(--step--1); max-width: 46ch; }
+  .foot .flinks { display: flex; gap: 1.3rem; }
+  .foot .flinks a { color: var(--ink-soft); text-decoration: none; font-size: var(--step--1); }
+  .foot .flinks a:hover { color: var(--ink); }
+  .foot-row { margin-top: 2rem; }
+
+  /* ---- Reveal motion ---- */
+  .js .reveal { opacity: 0; transform: translateY(18px); }
+  .js .reveal.in { opacity: 1; transform: none; transition: opacity 0.7s cubic-bezier(0.16,1,0.3,1), transform 0.7s cubic-bezier(0.16,1,0.3,1); }
+  .js .reveal.d1 { transition-delay: 0.06s; }
+  .js .reveal.d2 { transition-delay: 0.12s; }
+  .js .reveal.d3 { transition-delay: 0.18s; }
+
+  /* hero correct-bubble fills on load */
+  @keyframes fillbubble { from { background: transparent; border-color: var(--line-strong); } to { background: var(--teal); border-color: var(--teal); } }
+  .js .bubble.animate { animation: fillbubble 0.5s cubic-bezier(0.16,1,0.3,1) 0.5s both; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .js .reveal, .js .reveal.in { opacity: 1; transform: none; transition: none; }
+    .js .bubble.animate { animation: none; background: var(--teal); border-color: var(--teal); }
+    .btn { transition: none; }
+  }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site">
+  <div class="wrap nav">
+    <a class="brand" href="#top" aria-label="Quiz Editor home">
+      <img src="screenshots/app-icon.png" alt="">
+      <span>Quiz&nbsp;Editor</span>
+    </a>
+    <nav class="links" aria-label="Primary">
+      <a href="#standards">Standards</a>
+      <a href="#authoring">Authoring</a>
+      <a href="#review">AI &amp; review</a>
+      <a href="#access">Accessibility</a>
+      <a class="btn btn-primary ghbtn" href="https://github.com/ntderosu-code/QuizEditor">View on GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <span id="top"></span>
+  <div class="ticks left" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div>
+        <div class="kicker bubblerow reveal" aria-hidden="true">
+          <span class="bubble"></span>
+          <span class="bubble"></span>
+          <span class="bubble filled animate"></span>
+          <span class="bubble"></span>
+          <span class="lbl mono">choose the right answer</span>
+        </div>
+        <h1 class="hero-title reveal d1">Write better questions. Export them to <span class="em">any LMS</span>.</h1>
+        <p class="lede reveal d2">A native macOS app for authoring rich, accessible quizzes and round-tripping them through <strong>QTI</strong> and <strong>IMS Common Cartridge</strong>. Built for Canvas, Brightspace, Blackboard, Moodle, and anything else that reads the standards. AI sharpens your items; your work never leaves your Mac.</p>
+        <div class="hero-cta reveal d3">
+          <a class="btn btn-primary" href="https://github.com/ntderosu-code/QuizEditor">View on GitHub</a>
+          <a class="btn btn-ghost" href="#start">Build it from source</a>
+        </div>
+        <p class="hero-meta mono reveal d3">macOS&nbsp;14+&nbsp;&nbsp;·&nbsp;&nbsp;Swift&nbsp;6&nbsp;&nbsp;·&nbsp;&nbsp;<b>MIT</b>&nbsp;&nbsp;·&nbsp;&nbsp;zero&nbsp;dependencies</p>
+      </div>
+      <div class="shot reveal d2">
+        <img src="screenshots/editor.png" width="2400" height="1520" fetchpriority="high"
+             alt="The Quiz Editor window: a searchable, filterable question sidebar with difficulty badges, a question editor showing points, difficulty, and tag fields, and an AI Assistant panel.">
+      </div>
+    </div>
+  </section>
+
+  <!-- STANDARDS BAND -->
+  <section class="band pad" id="standards">
+    <div class="wrap">
+      <p class="eyebrow reveal"><span class="bubble filled" aria-hidden="true"></span> Interoperability, not lock-in</p>
+      <h2 class="sec reveal d1">Author once. Open it wherever you teach.</h2>
+      <p class="sec-lede reveal d1">QTI and IMS Common Cartridge are open standards, not one vendor's feature. Quiz Editor reads and writes them faithfully, so a quiz you write today still imports cleanly into next year's platform.</p>
+      <div class="stamps reveal d2">
+        <span class="stamp"><span class="dot"></span>QTI&nbsp;1.2</span>
+        <span class="stamp"><span class="dot"></span>QTI&nbsp;2.1</span>
+        <span class="stamp"><span class="dot"></span>.imscc</span>
+        <span class="stamp"><span class="dot"></span>.quizeditor</span>
+      </div>
+      <p class="lms-line reveal d2"><b>Imports and exports:</b> Canvas, Brightspace, Blackboard, Moodle, D2L, and any system that speaks QTI or Common Cartridge.</p>
+      <p class="note reveal d3">Every QTI export is checked before it is written: <b>well-formed XML, a consistent manifest, and a clean re-import</b> that yields the same questions. Problems surface in the app, not after you upload.</p>
+    </div>
+  </section>
+
+  <!-- AUTHORING -->
+  <section class="pad" id="authoring">
+    <div class="wrap feature">
+      <div class="ftext reveal">
+        <p class="eyebrow"><span class="bubble filled" aria-hidden="true"></span> Authoring</p>
+        <h2 class="sec">Every question type, written like prose.</h2>
+        <p>Multiple choice, multiple answer, true/false, fill-in-the-blank, short answer, essay, and matching. Write prompts and feedback as real rich text, with <strong>images, tables, and links that survive the round trip</strong> through QTI. Images cannot leave the app without alt text.</p>
+        <ul class="checklist">
+          <li><span class="bubble filled" aria-hidden="true"></span><span><b>Tag, rate, and weight</b> every question with topics, difficulty, and points.</span></li>
+          <li><span class="bubble filled" aria-hidden="true"></span><span><b>Find anything fast</b> with live sidebar search, tag and difficulty filters, and a quick-switch palette.</span></li>
+          <li><span class="bubble filled" aria-hidden="true"></span><span><b>Reorder by dragging</b>, duplicate in a keystroke, and undo any structural change.</span></li>
+        </ul>
+      </div>
+      <div class="reveal d1">
+<pre class="sample" role="img" aria-label="A sample quiz written in plain marked text: an asterisk marks the correct answer, a dash marks distractors."><span class="cap"># Or paste questions as plain text</span>
+Type: Multiple Choice
+<span class="k">Question:</span> Which organelle makes ATP?
+<span class="c">* Mitochondrion</span>
+<span class="d">- Ribosome</span>
+<span class="d">- Golgi apparatus</span>
+<span class="k">Feedback:</span> The mitochondrion runs cellular respiration.</pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- AI + LINTER -->
+  <section class="pad" id="review">
+    <div class="wrap feature flip">
+      <div class="ftext reveal">
+        <p class="eyebrow"><span class="bubble filled" aria-hidden="true"></span> Review &amp; AI</p>
+        <h2 class="sec">A reviewer that reads for item-writing, not just spelling.</h2>
+        <p>An <strong>offline linter</strong> flags the classics instantly, no network required: no correct answer, an unemphasized negative stem, a giveaway longest option, all-of-the-above, missing feedback. When you want more, <strong>AI review</strong> returns a before-and-after you apply field by field, and can draft new questions, distractors, and feedback.</p>
+        <p>Bring an OpenAI-compatible API, run Apple's on-device models, or copy a prompt into any assistant and paste the reply back. Results open in a window you can read, copy, or save.</p>
+      </div>
+      <div class="shot reveal d1">
+        <img src="screenshots/ai-review.png" width="2704" height="1784" loading="lazy"
+             alt="The AI Review sheet: a short critique of a question, a list of item-writing improvements, and a before-and-after rewrite of the prompt you apply field by field.">
+      </div>
+    </div>
+  </section>
+
+  <!-- IMPORT / EXPORT -->
+  <section class="pad" id="exchange">
+    <div class="wrap feature">
+      <div class="ftext reveal">
+        <p class="eyebrow"><span class="bubble filled" aria-hidden="true"></span> Import &amp; export</p>
+        <h2 class="sec">Bring questions in. Send finished exams out.</h2>
+        <p>Import a QTI <code class="mono">.zip</code>, an <strong>IMS Common Cartridge</strong>, or loosely marked plain text. Pull in exactly the questions you want, from a whole course cartridge or a single <strong>item bank</strong>, and merge banks across files.</p>
+        <ul class="checklist">
+          <li><span class="bubble filled" aria-hidden="true"></span><span>A <b>question picker</b> with search, select-all, and per-question preview before anything lands.</span></li>
+          <li><span class="bubble filled" aria-hidden="true"></span><span>A read-only <b>question bank</b> across a folder of saved quizzes.</span></li>
+          <li><span class="bubble filled" aria-hidden="true"></span><span>Export <b>validated QTI</b>, a formatted document, or a print-ready <b>paper exam</b> with a separate answer key.</span></li>
+        </ul>
+      </div>
+      <div class="shot reveal d1">
+        <img src="screenshots/import.png" width="2704" height="1784" loading="lazy"
+             alt="The Import Marked Text dialog: a correct-answer marker setting and a panel of sample quiz questions written in plain text.">
+      </div>
+    </div>
+  </section>
+
+  <!-- ACCESSIBILITY -->
+  <section class="a11y pad" id="access">
+    <div class="wrap grid2">
+      <div class="reveal">
+        <p class="eyebrow"><span class="bubble filled" aria-hidden="true"></span> Accessibility</p>
+        <h2 class="sec">Accessible is the floor, not a feature.</h2>
+        <p class="lead">WCAG 2.1 AA is the baseline this app is built to, and it ships that way the first time, not as a follow-up.</p>
+      </div>
+      <ul class="checklist reveal d1">
+        <li><span class="bubble filled" aria-hidden="true"></span><span><b>Alt text is required</b> on every image before export, or an explicit decorative choice.</span></li>
+        <li><span class="bubble filled" aria-hidden="true"></span><span><b>Full keyboard operation</b> with a visible focus ring on every control.</span></li>
+        <li><span class="bubble filled" aria-hidden="true"></span><span><b>VoiceOver labels</b> throughout, and status changes announced as they happen.</span></li>
+        <li><span class="bubble filled" aria-hidden="true"></span><span><b>Color is never the only signal.</b> A correct answer carries a mark and a label, not just a hue.</span></li>
+        <li><span class="bubble filled" aria-hidden="true"></span><span><b>Dynamic Type</b> is respected, so the interface scales with the reader.</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- NATIVE / LOCAL -->
+  <section class="pad" id="native">
+    <div class="wrap">
+      <p class="eyebrow reveal"><span class="bubble filled" aria-hidden="true"></span> Native and local</p>
+      <h2 class="sec reveal d1">Yours to keep, on a Mac that already trusts it.</h2>
+      <p class="sec-lede reveal d1">Built entirely on Apple frameworks, SwiftUI, AppKit, and WebKit, with no third-party dependencies. Quizzes are plain-JSON <code class="mono">.quizeditor</code> documents you can diff, back up, and own. Open, edit, review, and export entirely offline. MIT licensed.</p>
+    </div>
+  </section>
+
+  <!-- GET STARTED -->
+  <section class="band pad" id="start">
+    <div class="wrap start-grid">
+      <div class="reveal">
+        <p class="eyebrow"><span class="bubble filled" aria-hidden="true"></span> Get started</p>
+        <h2 class="sec">Clone it and run.</h2>
+        <p class="sec-lede">It is open source. Build it from the repository with a Swift 6 toolchain on macOS 14 or later. The full test suite runs with one command.</p>
+        <p style="margin-top:1.8rem"><a class="btn btn-onindigo" href="https://github.com/ntderosu-code/QuizEditor">Open the repository</a></p>
+      </div>
+      <div class="reveal d1">
+        <pre class="terminal" aria-label="Terminal commands to build and run Quiz Editor"><span class="cmt"># clone, then run the app</span>
+<span class="p">$</span> git clone https://github.com/ntderosu-code/QuizEditor.git
+<span class="p">$</span> cd QuizEditor
+<span class="p">$</span> swift run QuizEditorApp
+
+<span class="cmt"># run the tests</span>
+<span class="p">$</span> swift test</pre>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="site" id="footer">
+  <div class="wrap">
+    <div class="foot">
+      <a class="brand" href="#top" aria-label="Quiz Editor home">
+        <img src="screenshots/app-icon.png" alt="" width="30" height="30">
+        <span>Quiz&nbsp;Editor</span>
+      </a>
+      <p>MIT &copy; 2026 Byron R Roush. Built on Apple frameworks, with no third-party libraries.</p>
+      <div class="flinks">
+        <a href="https://github.com/ntderosu-code/QuizEditor">GitHub</a>
+        <a href="https://github.com/ntderosu-code/QuizEditor/blob/main/LICENSE">License</a>
+      </div>
+    </div>
+    <div class="foot-row bubblerow" aria-hidden="true">
+      <span class="bubble"></span><span class="bubble"></span><span class="bubble filled"></span><span class="bubble"></span>
+      <span class="bubble"></span><span class="bubble filled"></span><span class="bubble"></span><span class="bubble"></span>
+      <span class="bubble"></span><span class="bubble"></span><span class="bubble"></span><span class="bubble filled"></span>
+    </div>
+  </div>
+</footer>
+
+<script>
+  // Progressive reveal. Content is fully visible without JS.
+  (function () {
+    if (!('IntersectionObserver' in window)) return;
+    var els = document.querySelectorAll('.reveal');
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+      });
+    }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 });
+    els.forEach(function (el) { io.observe(el); });
+  })();
+</script>
+</body>
+</html>
