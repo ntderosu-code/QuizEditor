@@ -31,6 +31,7 @@ public struct LintFinding: Equatable, Sendable, Identifiable {
         public static let missingFeedback = Rule("missingFeedback")
         public static let articleCue = Rule("articleCue")
         public static let recallDrift = Rule("recallDrift")
+        public static let noCompetencyLinked = Rule("noCompetencyLinked")
     }
 
     public let rule: Rule
@@ -122,6 +123,14 @@ public struct QuestionLinter: Sendable {
         findings.append(contentsOf: lexiconFindings(question, terminology: persona.terminology))
         if persona.linterProfile.checksRecallDrift, let drift = recallDriftFinding(question, context: context) {
             findings.append(drift)
+        }
+        if persona.linterProfile.requiresCompetency, question.competencyIDs.isEmpty {
+            findings.append(LintFinding(
+                rule: .noCompetencyLinked,
+                severity: .suggestion,
+                message: "This item is not linked to any competency or standard.",
+                suggestion: "Link it to a framework node so it counts toward competency coverage."
+            ))
         }
 
         return findings.sorted { lhs, rhs in

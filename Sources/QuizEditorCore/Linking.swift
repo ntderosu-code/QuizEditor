@@ -209,17 +209,21 @@ public struct PromptLinkContext: Sendable, Equatable {
     public var stimulus: Stimulus?
     public var sources: [Source]
     public var objectives: [LearningObjective]
+    /// Resolved competency/standard node labels (#25), so the AI can align review
+    /// and authoring to the stated competencies.
+    public var competencies: [String]
 
-    public init(stimulus: Stimulus? = nil, sources: [Source] = [], objectives: [LearningObjective] = []) {
+    public init(stimulus: Stimulus? = nil, sources: [Source] = [], objectives: [LearningObjective] = [], competencies: [String] = []) {
         self.stimulus = stimulus
         self.sources = sources
         self.objectives = objectives
+        self.competencies = competencies
     }
 
     public static let empty = PromptLinkContext()
 
     public var isEmpty: Bool {
-        stimulus == nil && sources.isEmpty && objectives.isEmpty
+        stimulus == nil && sources.isEmpty && objectives.isEmpty && competencies.isEmpty
     }
 }
 
@@ -227,9 +231,17 @@ public extension Quiz {
     /// Resolves the linking ids on `question` into the quiz's actual entities for
     /// use in AI prompts.
     func promptLinkContext(for question: QuizQuestion) -> PromptLinkContext {
+        promptLinkContext(for: question, frameworks: [])
+    }
+
+    /// As above, also resolving `competencyIDs` into framework node labels.
+    func promptLinkContext(for question: QuizQuestion, frameworks: [Framework]) -> PromptLinkContext {
         let stimulus = question.stimulusID.flatMap { id in stimuli.first { $0.id == id } }
         let linkedSources = question.sourceIDs.compactMap { id in sources.first { $0.id == id } }
         let linkedObjectives = question.objectiveIDs.compactMap { id in objectives.first { $0.id == id } }
-        return PromptLinkContext(stimulus: stimulus, sources: linkedSources, objectives: linkedObjectives)
+        let competencyLabels = question.competencyIDs.compactMap { id in
+            frameworks.lazy.compactMap { $0.node(withID: id)?.displayLabel }.first
+        }
+        return PromptLinkContext(stimulus: stimulus, sources: linkedSources, objectives: linkedObjectives, competencies: competencyLabels)
     }
 }
