@@ -11,6 +11,12 @@ struct SidebarView: View {
     @Binding var quiz: Quiz
     @Binding var selectedQuestionID: UUID?
     let lintFindings: [UUID: [LintFinding]]
+    let onAddQuestion: () -> Void
+    let onImportMarkedText: () -> Void
+    let onImportQTI: (Bool) -> Void
+    let onImportCommonCartridge: () -> Void
+    let onMergeFromFile: () -> Void
+    let onOpenBank: () -> Void
     let onDuplicate: (UUID) -> Void
     let onDelete: (UUID) -> Void
     let onMove: (IndexSet, Int) -> Void
@@ -98,6 +104,35 @@ struct SidebarView: View {
         .listStyle(.sidebar)
         .navigationTitle("Quiz")
         .safeAreaInset(edge: .top) { searchBar }
+        // The sidebar's own controls sit on the toolbar bar above it (Liquid
+        // Glass), not in a custom footer.
+        .toolbar {
+            ToolbarItemGroup {
+                Button(action: onAddQuestion) {
+                    Label("Add Question", systemImage: "plus")
+                }
+                .keyboardShortcut("n", modifiers: [.command, .shift])
+                .help("Add a new question (⇧⌘N)")
+
+                Menu {
+                    Button("Marked Text…") { onImportMarkedText() }
+                        .keyboardShortcut("i", modifiers: [.command, .shift])
+                    Divider()
+                    Section("QTI Package (.zip)") {
+                        Button("Keep Formatting…") { onImportQTI(true) }
+                        Button("Plain Text…") { onImportQTI(false) }
+                    }
+                    Button("Common Cartridge (.imscc)…") { onImportCommonCartridge() }
+                    Divider()
+                    Button("Merge from File…") { onMergeFromFile() }
+                    Button("Question Bank…") { onOpenBank() }
+                } label: {
+                    Label("Add", systemImage: "square.and.arrow.down")
+                }
+                .menuIndicator(.hidden)
+                .help("Import or add questions: marked text, a QTI .zip, Common Cartridge, a merge, or the question bank")
+            }
+        }
     }
 
     private func questionRow(number: Int, question: QuizQuestion) -> some View {

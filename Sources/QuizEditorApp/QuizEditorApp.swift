@@ -224,6 +224,15 @@ struct ContentView: View {
                 quiz: $quiz,
                 selectedQuestionID: $selectedQuestionID,
                 lintFindings: lintFindings,
+                onAddQuestion: addQuestion,
+                onImportMarkedText: { isImporterPresented = true },
+                onImportQTI: { keepFormatting in
+                    importPreservesFormatting = keepFormatting
+                    isQTIImporterPresented = true
+                },
+                onImportCommonCartridge: { isIMSCCImporterPresented = true },
+                onMergeFromFile: { isMergeImporterPresented = true },
+                onOpenBank: { isBankPresented = true },
                 onDuplicate: duplicateQuestion(id:),
                 onDelete: deleteQuestion(id:),
                 onMove: moveQuestions(from:to:),
@@ -264,48 +273,10 @@ struct ContentView: View {
             .inspectorColumnWidth(min: 280, ideal: 320, max: 440)
         }
         .toolbar {
-            // Grouped by function so each cluster renders as its own Liquid
-            // Glass capsule, separated by ToolbarSpacer (not crammed into one
-            // shared glass background).
-            ToolbarItem {
-                Button {
-                    addQuestion()
-                } label: {
-                    Label("Add Question", systemImage: "plus")
-                }
-                .keyboardShortcut("n", modifiers: [.command, .shift])
-                .help("Add a new question (⇧⌘N)")
-            }
-
-            ToolbarSpacer(.flexible)
-
+            // Add Question and Import live on the sidebar's own toolbar bar
+            // (over the question list). The clusters here are document/AI tools,
+            // each its own Liquid Glass capsule separated by flexible spacers.
             ToolbarItemGroup {
-                Menu {
-                    Button("Marked Text…") { isImporterPresented = true }
-                        .keyboardShortcut("i", modifiers: [.command, .shift])
-                    Divider()
-                    Section("QTI Package (.zip)") {
-                        Button("Keep Formatting…") {
-                            importPreservesFormatting = true
-                            isQTIImporterPresented = true
-                        }
-                        Button("Plain Text…") {
-                            importPreservesFormatting = false
-                            isQTIImporterPresented = true
-                        }
-                    }
-                    Button("Common Cartridge (.imscc)…") {
-                        isIMSCCImporterPresented = true
-                    }
-                    Divider()
-                    Button("Merge from File…") { isMergeImporterPresented = true }
-                    Button("Question Bank…") { isBankPresented = true }
-                } label: {
-                    Label("Import", systemImage: "square.and.arrow.down")
-                }
-                .menuIndicator(.hidden)
-                .help("Import questions from marked text, a QTI .zip, or an IMS Common Cartridge (works with Canvas and other LMSs)")
-
                 Menu {
                     Section("QTI Package") {
                         ForEach(CanvasQuizEngine.allCases) { engine in
