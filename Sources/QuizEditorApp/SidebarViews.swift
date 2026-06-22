@@ -203,8 +203,10 @@ struct SidebarView: View {
     }
 
     private var bottomBar: some View {
-        // Liquid Glass buttons: visible on their own (each has its own glass
-        // backing), so no separating panel is needed.
+        // Liquid Glass buttons need an opaque footer behind them; otherwise the
+        // scrolling list bleeds through and they're invisible. The bar uses the
+        // window background (not a contrasting material) plus a hairline so it
+        // reads as part of the sidebar, and the glass buttons sit clearly on top.
         HStack(spacing: 8) {
             Button(action: onAddQuestion) {
                 Label("Add Question", systemImage: "plus")
@@ -235,6 +237,9 @@ struct SidebarView: View {
         .buttonStyle(.glass)
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .overlay(alignment: .top) { Divider() }
     }
 }
 
