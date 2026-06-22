@@ -6,14 +6,20 @@ import QuizEditorCore
 /// the resolved persona's profiles yet, so selecting a persona changes no behavior.
 @MainActor
 final class PersonaStore: ObservableObject {
-    @Published private(set) var personas: [Persona]
+    @Published private(set) var personas: [Persona] {
+        didSet { resolver = PersonaResolver(personas: personas) }
+    }
+
+    /// Built once whenever `personas` changes, rather than rebuilt on every
+    /// `resolve(_:)` — which runs often (per render, per lint pass).
+    private(set) var resolver: PersonaResolver
 
     /// `personas` is injectable for tests/previews; otherwise loaded from disk.
     init(personas: [Persona]? = nil) {
-        self.personas = personas ?? Self.loadAll()
+        let loaded = personas ?? Self.loadAll()
+        self.personas = loaded
+        self.resolver = PersonaResolver(personas: loaded)
     }
-
-    var resolver: PersonaResolver { PersonaResolver(personas: personas) }
 
     /// The fully merged persona for an id, falling back to General.
     func resolve(_ id: String?) -> Persona { resolver.resolve(id) }

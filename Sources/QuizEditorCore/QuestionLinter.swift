@@ -258,7 +258,28 @@ public struct QuestionLinter: Sendable {
     }
 
     private func matches(_ pattern: String, in text: String) -> Bool {
-        text.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil
+        guard let regex = Self.cachedRegex(for: pattern) else {
+            // Fall back to the (uncached) String API if the pattern doesn't compile
+            // as NSRegularExpression, preserving prior behavior.
+            return text.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil
+        }
+        return regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil
+    }
+
+    /// Case-insensitive regexes compiled once and reused. The same persona rule and
+    /// lexicon patterns run against every question on every lint pass, so compiling
+    /// each pattern once (instead of per call) avoids redundant work. `NSCache` is
+    /// thread-safe.
+    // NSCache is internally thread-safe; the annotation satisfies the Swift 6
+    // concurrency checker for this known-safe shared instance.
+    nonisolated(unsafe) private static let regexCache = NSCache<NSString, NSRegularExpression>()
+
+    private static func cachedRegex(for pattern: String) -> NSRegularExpression? {
+        let key = pattern as NSString
+        if let cached = regexCache.object(forKey: key) { return cached }
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return nil }
+        regexCache.setObject(regex, forKey: key)
+        return regex
     }
 
     // MARK: - Lexicon scanner
