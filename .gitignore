@@ -12,10 +12,12 @@ DerivedData/
 # macOS
 .DS_Store
 
-# Tooling / local agent artifacts
+# Tooling / local agent artifacts (claude-mem writes per-directory CLAUDE.md files)
 .serena/
 CLAUDE.md
 **/CLAUDE.md
+# ...but track the canonical project CLAUDE.md at the repo root.
+!/CLAUDE.md
 
 # Release artifacts
 dist/
