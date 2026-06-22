@@ -21,7 +21,8 @@ extension ContentView {
                 sources: $quiz.sources,
                 stimuli: $quiz.stimuli,
                 frameworks: frameworkStore.frameworks,
-                persona: activePersona
+                persona: activePersona,
+                onPreview: { isPreviewPresented = true }
             ) {
                 deleteQuestion(id: quiz.questions[selectedIndex].id)
             }
