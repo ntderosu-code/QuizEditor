@@ -344,6 +344,15 @@ public struct QuestionLinter: Sendable {
                     suggestion: "Add at least one accepted answer and mark it correct."
                 ))
             }
+        case .numeric:
+            if question.numeric?.isConfigured != true {
+                findings.append(LintFinding(
+                    rule: .noCorrectAnswer,
+                    severity: .warning,
+                    message: "This numeric question has no accepted answer configured.",
+                    suggestion: "Set an exact value with a margin, a range, or a precision so it can be graded."
+                ))
+            }
         case .essay, .matching:
             break
         }
@@ -491,7 +500,7 @@ public struct QuestionLinter: Sendable {
     private func usesChoiceOptions(_ question: QuizQuestion) -> Bool {
         switch question.type {
         case .multipleChoice, .multipleAnswer, .trueFalse: true
-        case .fillInBlank, .shortAnswer, .essay, .matching: false
+        case .fillInBlank, .shortAnswer, .essay, .matching, .numeric: false
         }
     }
 

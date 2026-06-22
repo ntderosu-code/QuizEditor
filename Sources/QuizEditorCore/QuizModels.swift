@@ -95,6 +95,8 @@ public struct QuizQuestion: Equatable, Codable, Identifiable, Sendable {
     public var competencyIDs: [String]
     public var sourceIDs: [String]
     public var stimulusID: String?
+    /// Grading spec for a `.numeric` question; nil for every other type.
+    public var numeric: NumericAnswer?
 
     public init(
         id: UUID = UUID(),
@@ -109,7 +111,8 @@ public struct QuizQuestion: Equatable, Codable, Identifiable, Sendable {
         objectiveIDs: [String] = [],
         competencyIDs: [String] = [],
         sourceIDs: [String] = [],
-        stimulusID: String? = nil
+        stimulusID: String? = nil,
+        numeric: NumericAnswer? = nil
     ) {
         self.id = id
         self.type = type
@@ -124,11 +127,12 @@ public struct QuizQuestion: Equatable, Codable, Identifiable, Sendable {
         self.competencyIDs = competencyIDs
         self.sourceIDs = sourceIDs
         self.stimulusID = stimulusID
+        self.numeric = numeric
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, type, prompt, answers, matches, feedback, points, tags, difficulty
-        case objectiveIDs, competencyIDs, sourceIDs, stimulusID
+        case objectiveIDs, competencyIDs, sourceIDs, stimulusID, numeric
     }
 
     // Decodes tolerantly so quizzes saved before metadata existed still open:
@@ -148,6 +152,7 @@ public struct QuizQuestion: Equatable, Codable, Identifiable, Sendable {
         competencyIDs = try container.decodeIfPresent([String].self, forKey: .competencyIDs) ?? []
         sourceIDs = try container.decodeIfPresent([String].self, forKey: .sourceIDs) ?? []
         stimulusID = try container.decodeIfPresent(String.self, forKey: .stimulusID)
+        numeric = try container.decodeIfPresent(NumericAnswer.self, forKey: .numeric)
     }
 }
 
@@ -175,6 +180,7 @@ public enum QuizQuestionType: String, CaseIterable, Codable, Identifiable, Senda
     case shortAnswer
     case essay
     case matching
+    case numeric
 
     public var id: String { rawValue }
 
@@ -187,6 +193,7 @@ public enum QuizQuestionType: String, CaseIterable, Codable, Identifiable, Senda
         case .shortAnswer: "Short Answer"
         case .essay: "Essay"
         case .matching: "Matching"
+        case .numeric: "Numeric"
         }
     }
 
@@ -199,6 +206,7 @@ public enum QuizQuestionType: String, CaseIterable, Codable, Identifiable, Senda
         case .shortAnswer: "short_answer_question"
         case .essay: "essay_question"
         case .matching: "matching_question"
+        case .numeric: "numerical_question"
         }
     }
 }

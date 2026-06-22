@@ -1289,6 +1289,15 @@ struct QuestionEditor: View {
         QuestionLinter().findings(for: question, persona: persona)
     }
 
+    /// A non-optional binding to the question's numeric spec, materializing a
+    /// default when none exists yet.
+    private var numericBinding: Binding<NumericAnswer> {
+        Binding(
+            get: { question.numeric ?? NumericAnswer() },
+            set: { question.numeric = $0 }
+        )
+    }
+
     /// This question's links resolved into the quiz's actual entities, fed to the
     /// AI so it reviews the whole item (stimulus, sources, objectives).
     private var linkedContext: PromptLinkContext {
@@ -1387,6 +1396,8 @@ struct QuestionEditor: View {
 
                 if question.type == .matching {
                     MatchingEditor(matches: $question.matches)
+                } else if question.type == .numeric {
+                    NumericAnswerEditor(numeric: numericBinding)
                 } else if question.type != .essay {
                     AnswerEditor(question: $question)
                 }
@@ -1704,6 +1715,94 @@ struct AnswerEditor: View {
                 QuizAnswer(text: "False", isCorrect: false)
             ]
         }
+    }
+}
+
+/// Edits a numeric question's grading (exact ± margin / range / precision) and an
+/// advisory expected unit that is explicitly tool-only — never sent to the LMS.
+struct NumericAnswerEditor: View {
+    @Binding var numeric: NumericAnswer
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Numeric answer")
+                .font(.subheadline.weight(.semibold))
+
+            LabeledField("Grading") {
+                Picker("Grading", selection: $numeric.mode) {
+                    ForEach(NumericGradingMode.allCases) { mode in
+                        Text(mode.displayName).tag(mode)
+                    }
+                }
+                .labelsHidden()
+                .fixedSize()
+            }
+
+            switch numeric.mode {
+            case .exact:
+                HStack(spacing: 16) {
+                    LabeledField("Answer") {
+                        numberField("Value", value: $numeric.value)
+                    }
+                    LabeledField("± Margin") {
+                        numberField("0", value: $numeric.margin)
+                    }
+                }
+                Text("Absolute margin only. (Percent margin is supported by New Quizzes but not Classic, so it isn't offered here.)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            case .range:
+                HStack(spacing: 16) {
+                    LabeledField("Minimum") {
+                        numberField("Min", value: $numeric.rangeMin)
+                    }
+                    LabeledField("Maximum") {
+                        numberField("Max", value: $numeric.rangeMax)
+                    }
+                }
+            case .precision:
+                HStack(spacing: 16) {
+                    LabeledField("Answer") {
+                        numberField("Value", value: $numeric.value)
+                    }
+                    LabeledField("Significant digits") {
+                        TextField("digits", value: $numeric.precisionDigits, format: .number)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 80)
+                    }
+                }
+                Text("Precision exports to New Quizzes; Classic Quizzes approximates it as an exact match.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Divider()
+
+            LabeledField("Expected unit (optional)") {
+                TextField("e.g. g/mol", text: expectedUnitBinding)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 160)
+            }
+            Label("Not sent to your LMS — used only inside QuizEditor (linter and AI). LMS numeric questions grade the number alone.", systemImage: "info.circle")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func numberField(_ placeholder: String, value: Binding<Double?>) -> some View {
+        TextField(placeholder, value: value, format: .number)
+            .textFieldStyle(.roundedBorder)
+            .frame(width: 110)
+    }
+
+    private var expectedUnitBinding: Binding<String> {
+        Binding(
+            get: { numeric.expectedUnit ?? "" },
+            set: { numeric.expectedUnit = $0.isEmpty ? nil : $0 }
+        )
     }
 }
 
