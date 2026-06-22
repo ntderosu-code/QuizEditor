@@ -1,9 +1,10 @@
 import SwiftUI
 import QuizEditorCore
 
-/// A compact badge for a sidebar row showing whether the offline linter found
-/// anything. Shape *and* color (and a VoiceOver label) convey the severity, so
-/// color is never the sole signal.
+/// A compact status dot for a sidebar row showing whether the offline linter
+/// found anything, following the macOS convention of a small dot rather than an
+/// icon. Fill *and* color (plus a VoiceOver label) convey severity, so color is
+/// never the sole signal: a warning is a filled dot, a suggestion a hollow ring.
 struct LintBadge: View {
     let findings: [LintFinding]
 
@@ -11,11 +12,16 @@ struct LintBadge: View {
 
     var body: some View {
         if !findings.isEmpty {
-            Image(systemName: hasWarning ? "exclamationmark.triangle.fill" : "lightbulb.fill")
-                .font(.caption)
-                .foregroundStyle(hasWarning ? .orange : .yellow)
-                .help(summary)
-                .accessibilityLabel(accessibilityText)
+            Group {
+                if hasWarning {
+                    Circle().fill(Color.orange)
+                } else {
+                    Circle().strokeBorder(Color.secondary, lineWidth: 1.5)
+                }
+            }
+            .frame(width: 8, height: 8)
+            .help(summary)
+            .accessibilityLabel(accessibilityText)
         }
     }
 
