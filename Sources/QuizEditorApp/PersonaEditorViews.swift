@@ -227,6 +227,7 @@ struct PersonaEditorSheet: View {
                     .frame(width: 100)
             }
             Toggle("Check for recall-drift (apply/analyze objective, recall-only stem)", isOn: $draft.linterProfile.checksRecallDrift)
+            Toggle("Require a linked competency (flag items mapped to no framework)", isOn: $draft.linterProfile.requiresCompetency)
         }
     }
 

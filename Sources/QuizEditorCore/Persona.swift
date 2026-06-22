@@ -181,15 +181,19 @@ public struct PersonaLinterProfile: Codable, Sendable, Equatable {
     /// Enables the shared recall-drift primitive (issue #23): flag an item linked
     /// to a higher-order objective whose stem only asks for recall.
     public var checksRecallDrift: Bool
+    /// Opt-in gate (#25): flag an item that links no competency/standard.
+    public var requiresCompetency: Bool
 
     public init(
         ruleOverrides: [String: PersonaRuleOverride] = [:],
         declarativeRules: [PersonaLinterRule] = [],
-        checksRecallDrift: Bool = false
+        checksRecallDrift: Bool = false,
+        requiresCompetency: Bool = false
     ) {
         self.ruleOverrides = ruleOverrides
         self.declarativeRules = declarativeRules
         self.checksRecallDrift = checksRecallDrift
+        self.requiresCompetency = requiresCompetency
     }
 
     public init(from decoder: Decoder) throws {
@@ -197,9 +201,10 @@ public struct PersonaLinterProfile: Codable, Sendable, Equatable {
         ruleOverrides = try c.decodeIfPresent([String: PersonaRuleOverride].self, forKey: .ruleOverrides) ?? [:]
         declarativeRules = try c.decodeIfPresent([PersonaLinterRule].self, forKey: .declarativeRules) ?? []
         checksRecallDrift = try c.decodeIfPresent(Bool.self, forKey: .checksRecallDrift) ?? false
+        requiresCompetency = try c.decodeIfPresent(Bool.self, forKey: .requiresCompetency) ?? false
     }
 
-    private enum CodingKeys: String, CodingKey { case ruleOverrides, declarativeRules, checksRecallDrift }
+    private enum CodingKeys: String, CodingKey { case ruleOverrides, declarativeRules, checksRecallDrift, requiresCompetency }
 }
 
 /// Guidance the AI features will fold into their prompts. Inert until the
@@ -394,7 +399,8 @@ public extension Persona {
         result.linterProfile = PersonaLinterProfile(
             ruleOverrides: overrides,
             declarativeRules: Persona.mergedByID(base.linterProfile.declarativeRules, linterProfile.declarativeRules),
-            checksRecallDrift: base.linterProfile.checksRecallDrift || linterProfile.checksRecallDrift
+            checksRecallDrift: base.linterProfile.checksRecallDrift || linterProfile.checksRecallDrift,
+            requiresCompetency: base.linterProfile.requiresCompetency || linterProfile.requiresCompetency
         )
 
         // AI: scalars prefer the child when set; lists append base-then-child.

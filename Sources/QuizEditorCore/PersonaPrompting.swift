@@ -59,6 +59,10 @@ enum PersonaPrompt {
                 return "- \(objective.text)\(level)"
             })
         }
+        if !context.competencies.isEmpty {
+            lines.append("Aligned competencies:")
+            lines.append(contentsOf: context.competencies.map { "- \($0)" })
+        }
         return "\n\n" + lines.joined(separator: "\n")
     }
 }

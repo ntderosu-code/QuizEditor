@@ -12,10 +12,13 @@ struct QuestionLinkingSection: View {
     @Binding var objectives: [LearningObjective]
     @Binding var sources: [Source]
     @Binding var stimuli: [Stimulus]
+    /// Competency frameworks for the competency picker (#25).
+    var frameworks: [Framework] = []
 
     @State private var editingObjective: LearningObjective?
     @State private var editingSource: Source?
     @State private var editingStimulus: Stimulus?
+    @State private var isPickingCompetencies = false
 
     var body: some View {
         GroupBox {
@@ -23,6 +26,8 @@ struct QuestionLinkingSection: View {
                 objectivesSubsection
                 Divider()
                 sourcesSubsection
+                Divider()
+                competenciesSubsection
                 Divider()
                 stimulusSubsection
 
@@ -44,6 +49,49 @@ struct QuestionLinkingSection: View {
         }
         .sheet(item: $editingStimulus) { stimulus in
             StimulusEditorSheet(stimulus: stimulus) { saved in upsertStimulus(saved, attachToQuestion: true) }
+        }
+        .sheet(isPresented: $isPickingCompetencies) {
+            CompetencyPickerSheet(frameworks: frameworks, competencyIDs: $question.competencyIDs)
+        }
+    }
+
+    // MARK: - Competencies
+
+    private var linkedCompetencyLabels: [(id: String, label: String)] {
+        question.competencyIDs.map { id in
+            let label = frameworks.lazy.compactMap { $0.node(withID: id)?.displayLabel }.first ?? id
+            return (id, label)
+        }
+    }
+
+    private var competenciesSubsection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Competencies")
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                Button {
+                    isPickingCompetencies = true
+                } label: {
+                    Label("Link competency", systemImage: "plus.circle")
+                }
+                .help("Link this question to competency/standard framework nodes")
+            }
+
+            if linkedCompetencyLabels.isEmpty {
+                emptyHint("No competencies linked.")
+            } else {
+                FlowLayout(spacing: 6) {
+                    ForEach(linkedCompetencyLabels, id: \.id) { entry in
+                        RemovableChip(
+                            text: entry.label,
+                            accessibilityLabel: "Competency: \(entry.label). Activate to remove.",
+                            onEdit: { isPickingCompetencies = true },
+                            onRemove: { question.competencyIDs.removeAll { $0 == entry.id } }
+                        )
+                    }
+                }
+            }
         }
     }
 

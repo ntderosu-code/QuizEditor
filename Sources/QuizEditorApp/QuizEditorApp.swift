@@ -181,6 +181,9 @@ struct ContentView: View {
     @StateObject private var personaStore = PersonaStore()
     @AppStorage("personaID") private var appDefaultPersonaID = Persona.generalID
     @State private var isPersonaSheetPresented = false
+    @StateObject private var frameworkStore = FrameworkStore()
+    @State private var isCoverageSheetPresented = false
+    @State private var isFrameworkSheetPresented = false
 
     private var lintFindings: [UUID: [LintFinding]] { QuestionLinter().findings(for: quiz, persona: activePersona) }
 
@@ -255,7 +258,8 @@ struct ContentView: View {
                 selectedQuestion: selectedQuestionBinding,
                 selectedQuestionNumber: selectedQuestionNumber,
                 onAuthorWithAI: { isAuthoringPresented = true },
-                persona: activePersona
+                persona: activePersona,
+                frameworks: frameworkStore.frameworks
             )
             .inspectorColumnWidth(min: 280, ideal: 320, max: 440)
         }
@@ -358,12 +362,28 @@ struct ContentView: View {
                 }
                 .help("Generate new questions from a topic or learning objective")
 
-                Button {
-                    isLintSheetPresented = true
+                Menu {
+                    Button {
+                        isLintSheetPresented = true
+                    } label: {
+                        Label("Item-writing check", systemImage: "checklist")
+                    }
+                    Button {
+                        isCoverageSheetPresented = true
+                    } label: {
+                        Label("Competency coverage…", systemImage: "chart.bar.doc.horizontal")
+                    }
+                    Divider()
+                    Button {
+                        isFrameworkSheetPresented = true
+                    } label: {
+                        Label("Manage frameworks…", systemImage: "list.bullet.indent")
+                    }
                 } label: {
                     Label("Quality Check", systemImage: "checklist")
                 }
-                .help("Run the offline item-writing linter across the whole quiz")
+                .menuIndicator(.hidden)
+                .help("Run the offline item-writing linter, view competency coverage, or manage frameworks")
 
                 Menu {
                     Picker("Persona", selection: $quiz.personaID) {
@@ -467,6 +487,12 @@ struct ContentView: View {
         .sheet(isPresented: $isPersonaSheetPresented) {
             PersonaManagementSheet(store: personaStore, quizPersonaID: $quiz.personaID)
         }
+        .sheet(isPresented: $isCoverageSheetPresented) {
+            CoverageReportSheet(quiz: quiz, frameworks: frameworkStore.frameworks)
+        }
+        .sheet(isPresented: $isFrameworkSheetPresented) {
+            FrameworkManagementSheet(store: frameworkStore)
+        }
         .sheet(item: $importPickerContext) { context in
             ImportPickerSheet(
                 title: context.title,
@@ -531,6 +557,7 @@ struct ContentView: View {
                 objectives: $quiz.objectives,
                 sources: $quiz.sources,
                 stimuli: $quiz.stimuli,
+                frameworks: frameworkStore.frameworks,
                 persona: activePersona
             ) {
                 deleteQuestion(id: quiz.questions[selectedIndex].id)
@@ -1234,6 +1261,9 @@ struct QuestionEditor: View {
     @Binding var objectives: [LearningObjective]
     @Binding var sources: [Source]
     @Binding var stimuli: [Stimulus]
+    /// The competency frameworks, for the linking section's competency picker and
+    /// for feeding competency labels to the AI.
+    var frameworks: [Framework] = []
     /// The active persona, so the inline item-writing checks reflect the discipline.
     var persona: Persona = .general
     let onDelete: () -> Void
@@ -1265,7 +1295,10 @@ struct QuestionEditor: View {
         PromptLinkContext(
             stimulus: question.stimulusID.flatMap { id in stimuli.first { $0.id == id } },
             sources: question.sourceIDs.compactMap { id in sources.first { $0.id == id } },
-            objectives: question.objectiveIDs.compactMap { id in objectives.first { $0.id == id } }
+            objectives: question.objectiveIDs.compactMap { id in objectives.first { $0.id == id } },
+            competencies: question.competencyIDs.compactMap { id in
+                frameworks.lazy.compactMap { $0.node(withID: id)?.displayLabel }.first
+            }
         )
     }
 
@@ -1336,7 +1369,8 @@ struct QuestionEditor: View {
                     question: $question,
                     objectives: $objectives,
                     sources: $sources,
-                    stimuli: $stimuli
+                    stimuli: $stimuli,
+                    frameworks: frameworks
                 )
 
                 if let reviewError {
@@ -1695,6 +1729,8 @@ struct AIPanel: View {
     /// The active persona, so AI prompts carry its preamble, guidelines, safety
     /// clauses, and temperature.
     var persona: Persona = .general
+    /// Competency frameworks, so linked competency labels reach the AI prompts.
+    var frameworks: [Framework] = []
 
     @AppStorage("aiProvider") private var provider = AIProvider.openAICompatible
     @AppStorage("aiAPIKey") private var apiKey = ""
@@ -1941,10 +1977,11 @@ struct AIPanel: View {
         let model = self.model
         let persona = self.persona
         let quiz = self.quiz
+        let frameworks = self.frameworks
         let systemInstruction = service.systemInstruction(persona: persona)
         let temperature = persona.aiProfile.temperatureOverride ?? 0.2
         return { questions in
-            let contexts = questions.map { quiz.promptLinkContext(for: $0) }
+            let contexts = questions.map { quiz.promptLinkContext(for: $0, frameworks: frameworks) }
             let prompt = service.makeBatchPrompt(questions: questions, quizTitle: quizTitle, persona: persona, contexts: contexts)
             let raw: String
             switch provider {
@@ -2052,7 +2089,7 @@ struct AIPanel: View {
 
     private func reviewSelectedQuestion(_ binding: Binding<QuizQuestion>) {
         let service = QuestionReviewService()
-        let context = quiz.promptLinkContext(for: binding.wrappedValue)
+        let context = quiz.promptLinkContext(for: binding.wrappedValue, frameworks: frameworks)
         let system = service.systemInstruction(persona: persona)
         let prompt = service.makePrompt(question: binding.wrappedValue, quizTitle: quizTitle, persona: persona, linkedContext: context)
         if provider == .copyPaste {
@@ -2106,7 +2143,7 @@ struct AIPanel: View {
 
     private func generateItemFeedback(_ binding: Binding<QuizQuestion>) {
         let service = QuestionAuthoringService()
-        let prompt = service.makeFeedbackPrompt(question: binding.wrappedValue, quizTitle: quizTitle, persona: persona, linkedContext: quiz.promptLinkContext(for: binding.wrappedValue))
+        let prompt = service.makeFeedbackPrompt(question: binding.wrappedValue, quizTitle: quizTitle, persona: persona, linkedContext: quiz.promptLinkContext(for: binding.wrappedValue, frameworks: frameworks))
         runItemGeneration(system: service.systemInstruction(persona: persona), user: prompt, temperature: persona.aiProfile.temperatureOverride ?? 0.4, id: "item-feedback") { raw in
             guard let feedback = service.parseFeedback(raw) else {
                 status = PanelStatus(text: "No feedback was returned.", isError: true)
