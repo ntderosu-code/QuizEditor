@@ -243,4 +243,138 @@ final class PersonaLinterTests: XCTestCase {
         // General carries no terminology, so it adds no lexicon findings.
         XCTAssertEqual(linter.findings(for: question, persona: .general), linter.findings(for: question))
     }
+
+    // MARK: - Link-presence gates (issue #23)
+
+    private func vignetteRequiredPersona() -> Persona {
+        Persona(
+            id: "test.vignette",
+            displayName: "Vignette Required",
+            linterProfile: PersonaLinterProfile(declarativeRules: [
+                PersonaLinterRule(
+                    id: "judgmentItemNeedsVignette",
+                    itemTypes: [.multipleChoice],
+                    requiresStimulus: true,
+                    severity: .suggestion,
+                    message: "This clinical-judgment item has no linked vignette.",
+                    suggestion: "Attach a shared case/vignette stimulus."
+                )
+            ])
+        )
+    }
+
+    func testDeclarativeRequiresStimulusFiresWhenAbsent() {
+        let question = QuizQuestion(
+            type: .multipleChoice,
+            prompt: "What is the priority action?",
+            answers: [QuizAnswer(text: "Administer oxygen", isCorrect: true)],
+            feedback: "x"
+        )
+        XCTAssertTrue(rules(linter.findings(for: question, persona: vignetteRequiredPersona()))
+            .contains(LintFinding.Rule("judgmentItemNeedsVignette")))
+    }
+
+    func testDeclarativeRequiresStimulusDoesNotFireWhenLinked() {
+        let question = QuizQuestion(
+            type: .multipleChoice,
+            prompt: "What is the priority action?",
+            answers: [QuizAnswer(text: "Administer oxygen", isCorrect: true)],
+            feedback: "x",
+            stimulusID: "stim1"
+        )
+        XCTAssertFalse(rules(linter.findings(for: question, persona: vignetteRequiredPersona()))
+            .contains(LintFinding.Rule("judgmentItemNeedsVignette")))
+    }
+
+    func testDeclarativeRequiresSourceFiresWhenAbsent() {
+        let persona = Persona(
+            id: "test.source",
+            displayName: "Source Required",
+            linterProfile: PersonaLinterProfile(declarativeRules: [
+                PersonaLinterRule(
+                    id: "sourceBasedItemNeedsAttribution",
+                    requiresSource: true,
+                    severity: .warning,
+                    message: "This source-based item cites no source.",
+                    suggestion: "Link the source material this item draws on."
+                )
+            ])
+        )
+        let unsourced = QuizQuestion(type: .essay, prompt: "Per the excerpt, evaluate the claim.", feedback: "x")
+        XCTAssertTrue(rules(linter.findings(for: unsourced, persona: persona))
+            .contains(LintFinding.Rule("sourceBasedItemNeedsAttribution")))
+
+        let sourced = QuizQuestion(type: .essay, prompt: "Per the excerpt, evaluate the claim.", feedback: "x", sourceIDs: ["src1"])
+        XCTAssertFalse(rules(linter.findings(for: sourced, persona: persona))
+            .contains(LintFinding.Rule("sourceBasedItemNeedsAttribution")))
+    }
+
+    // MARK: - Recall-drift (issue #23)
+
+    private func recallDriftPersona() -> Persona {
+        Persona(
+            id: "test.recalldrift",
+            displayName: "Recall Drift",
+            linterProfile: PersonaLinterProfile(checksRecallDrift: true)
+        )
+    }
+
+    func testRecallDriftFiresForHigherOrderObjectiveWithRecallStem() {
+        let question = QuizQuestion(
+            type: .shortAnswer,
+            prompt: "List the cranial nerves.",
+            answers: [QuizAnswer(text: "I-XII", isCorrect: true)],
+            feedback: "x",
+            objectiveIDs: ["obj1"]
+        )
+        let context = QuestionLinkContext(linkedObjectives: [
+            LearningObjective(id: "obj1", text: "Analyze neuro deficits", cognitiveLevel: .analyze)
+        ])
+        XCTAssertTrue(rules(linter.findings(for: question, persona: recallDriftPersona(), context: context))
+            .contains(.recallDrift))
+    }
+
+    func testRecallDriftDoesNotFireForRememberObjective() {
+        let question = QuizQuestion(type: .shortAnswer, prompt: "List the cranial nerves.", feedback: "x", objectiveIDs: ["obj1"])
+        let context = QuestionLinkContext(linkedObjectives: [
+            LearningObjective(id: "obj1", text: "Recall anatomy", cognitiveLevel: .remember)
+        ])
+        XCTAssertFalse(rules(linter.findings(for: question, persona: recallDriftPersona(), context: context))
+            .contains(.recallDrift))
+    }
+
+    func testRecallDriftDoesNotFireWhenStemIsHigherOrder() {
+        let question = QuizQuestion(type: .essay, prompt: "Analyze why cranial nerve palsies localize lesions.", feedback: "x", objectiveIDs: ["obj1"])
+        let context = QuestionLinkContext(linkedObjectives: [
+            LearningObjective(id: "obj1", text: "Analyze neuro deficits", cognitiveLevel: .analyze)
+        ])
+        XCTAssertFalse(rules(linter.findings(for: question, persona: recallDriftPersona(), context: context))
+            .contains(.recallDrift))
+    }
+
+    func testQuizLinterResolvesObjectiveContextForRecallDrift() {
+        let question = QuizQuestion(
+            type: .shortAnswer,
+            prompt: "Define osmosis.",
+            answers: [QuizAnswer(text: "diffusion of water", isCorrect: true)],
+            feedback: "x",
+            objectiveIDs: ["obj1"]
+        )
+        let quiz = Quiz(
+            title: "Bio",
+            questions: [question],
+            objectives: [LearningObjective(id: "obj1", text: "Apply osmosis to cells", cognitiveLevel: .apply)]
+        )
+        let byID = linter.findings(for: quiz, persona: recallDriftPersona())
+        let found = byID[question.id].map { Set($0.map(\.rule)) } ?? []
+        XCTAssertTrue(found.contains(.recallDrift))
+    }
+
+    func testGeneralDoesNotRunRecallDrift() {
+        let question = QuizQuestion(type: .shortAnswer, prompt: "List the cranial nerves.", feedback: "x", objectiveIDs: ["obj1"])
+        let context = QuestionLinkContext(linkedObjectives: [
+            LearningObjective(id: "obj1", text: "Analyze", cognitiveLevel: .analyze)
+        ])
+        XCTAssertFalse(rules(linter.findings(for: question, persona: .general, context: context)).contains(.recallDrift))
+    }
 }
