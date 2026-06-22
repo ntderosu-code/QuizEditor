@@ -102,6 +102,7 @@ struct QuestionEditor: View {
                     }
                     .disabled(isReviewing)
                     .buttonStyle(.glassProminent)
+                    .foregroundStyle(.white)
                     .fixedSize()
                     .help("Review this question for item-writing quality and apply suggested edits")
 

@@ -228,7 +228,10 @@ struct AIPanel: View {
         .disabled(disabled || (disabledWhenRunning && isRunning))
 
         if prominent {
+            // A prominent glass button fills with the accent tint, so its label
+            // must be white for contrast; without this the text inherits the tint.
             button.buttonStyle(.glassProminent)
+                .foregroundStyle(.white)
         } else {
             button.buttonStyle(.glass)
         }
@@ -525,6 +528,7 @@ struct AISettingsSheet: View {
                 Spacer()
                 Button("Done") { dismiss() }
                     .buttonStyle(.glassProminent)
+                    .foregroundStyle(.white)
                     .keyboardShortcut(.defaultAction)
             }
             .padding(20)

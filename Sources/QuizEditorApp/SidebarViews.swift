@@ -170,35 +170,43 @@ struct SidebarView: View {
     }
 
     private var bottomBar: some View {
-        HStack(spacing: 8) {
-            Button(action: onAddQuestion) {
-                Label("Add Question", systemImage: "plus")
-            }
-            .labelStyle(.iconOnly)
-            .help("Add a new question (⇧⌘N)")
+        // A divider plus a toolbar material set the bar apart from the scrolling
+        // question list; without them the borderless icons disappear against
+        // loaded content. Bordered buttons give each control visible chrome.
+        VStack(spacing: 0) {
+            Divider()
+            HStack(spacing: 8) {
+                Button(action: onAddQuestion) {
+                    Label("Add Question", systemImage: "plus")
+                }
+                .labelStyle(.iconOnly)
+                .help("Add a new question (⇧⌘N)")
 
-            // Icon-only menu with no fixed width so the bar reflows at any sidebar
-            // width instead of being clipped.
-            Menu {
-                Button("Marked Text…", action: onImportMarkedText)
-                Button("QTI Zip — Keep Formatting…") { onImportQTI(true) }
-                Button("QTI Zip — Plain Text…") { onImportQTI(false) }
-                Button("Common Cartridge (.imscc)…", action: onImportCommonCartridge)
-                Divider()
-                Button("Merge from File…", action: onMergeFromFile)
-                Button("Question Bank…", action: onOpenBank)
-            } label: {
-                Label("Add Content", systemImage: "tray.and.arrow.down")
-            }
-            .menuStyle(.borderlessButton)
-            .labelStyle(.iconOnly)
-            .help("Import, merge, or add questions from the bank")
+                // Icon-only menu with no fixed width so the bar reflows at any
+                // sidebar width instead of being clipped.
+                Menu {
+                    Button("Marked Text…", action: onImportMarkedText)
+                    Button("QTI Zip — Keep Formatting…") { onImportQTI(true) }
+                    Button("QTI Zip — Plain Text…") { onImportQTI(false) }
+                    Button("Common Cartridge (.imscc)…", action: onImportCommonCartridge)
+                    Divider()
+                    Button("Merge from File…", action: onMergeFromFile)
+                    Button("Question Bank…", action: onOpenBank)
+                } label: {
+                    Label("Add Content", systemImage: "tray.and.arrow.down")
+                }
+                .menuStyle(.button)
+                .labelStyle(.iconOnly)
+                .fixedSize()
+                .help("Import, merge, or add questions from the bank")
 
-            Spacer(minLength: 0)
+                Spacer(minLength: 0)
+            }
+            .buttonStyle(.bordered)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
         }
-        .buttonStyle(.borderless)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .background(.bar)
     }
 }
 
