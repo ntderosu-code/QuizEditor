@@ -527,6 +527,9 @@ struct ContentView: View {
                 quizTitle: quiz.title,
                 questionNumber: selectedIndex + 1,
                 questionTotal: quiz.questions.count,
+                objectives: $quiz.objectives,
+                sources: $quiz.sources,
+                stimuli: $quiz.stimuli,
                 persona: activePersona
             ) {
                 deleteQuestion(id: quiz.questions[selectedIndex].id)
@@ -1225,6 +1228,11 @@ struct QuestionEditor: View {
     let quizTitle: String
     let questionNumber: Int
     let questionTotal: Int
+    /// The quiz's reusable linking entities (issue #23), so this question can link
+    /// to and create objectives, sources, and a shared stimulus.
+    @Binding var objectives: [LearningObjective]
+    @Binding var sources: [Source]
+    @Binding var stimuli: [Stimulus]
     /// The active persona, so the inline item-writing checks reflect the discipline.
     var persona: Persona = .general
     let onDelete: () -> Void
@@ -1312,6 +1320,13 @@ struct QuestionEditor: View {
                 }
 
                 QuestionMetadataEditor(question: $question)
+
+                QuestionLinkingSection(
+                    question: $question,
+                    objectives: $objectives,
+                    sources: $sources,
+                    stimuli: $stimuli
+                )
 
                 if let reviewError {
                     aiMessageBox(reviewError, title: "AI Review") { self.reviewError = nil }
