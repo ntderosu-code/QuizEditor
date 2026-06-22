@@ -93,7 +93,7 @@ bundle. The icon is regenerated with `Scripts/generate-icon.swift` (rarely neede
 notarizes, staples, and zips a distributable `Quiz Editor.app`.
 
 ```bash
-Scripts/release.sh 1.2.0          # notary profile defaults to QuizEditorNotary
+Scripts/release.sh 1.2.0          # notary profile defaults to QuizEditor-password
 ```
 
 What it does: `swift build -c release` → assemble `dist/Quiz Editor.app` with a
@@ -107,9 +107,9 @@ Prerequisites (one-time):
 
 - A **"Developer ID Application"** certificate in the login keychain
   (team `C25Q3Q4YFN`, signing identity hardcoded in the script).
-- A **notarytool keychain profile** named `QuizEditorNotary`:
+- A **notarytool keychain profile** named `QuizEditor-password`:
   ```bash
-  xcrun notarytool store-credentials QuizEditorNotary \
+  xcrun notarytool store-credentials QuizEditor-password \
     --apple-id "<apple-id>" --team-id C25Q3Q4YFN --password "<app-specific-password>"
   ```
 

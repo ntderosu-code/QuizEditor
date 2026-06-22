@@ -6,8 +6,8 @@
 #
 # Prerequisites:
 #   - A "Developer ID Application" certificate in the login keychain.
-#   - A notarytool keychain profile (default name: QuizEditorNotary). Create once:
-#       xcrun notarytool store-credentials QuizEditorNotary \
+#   - A notarytool keychain profile (default name: QuizEditor-password). Create once:
+#       xcrun notarytool store-credentials QuizEditor-password \
 #         --apple-id "<your-apple-id>" --team-id C25Q3Q4YFN --password "<app-specific-password>"
 #     (Or use --key/--key-id/--issuer for an App Store Connect API key.)
 #
@@ -16,7 +16,7 @@
 set -euo pipefail
 
 VERSION="${1:-0.1.0}"
-NOTARY_PROFILE="${2:-QuizEditorNotary}"
+NOTARY_PROFILE="${2:-QuizEditor-password}"
 BUNDLE_ID="com.byronroush.quizeditor"
 SIGN_ID="Developer ID Application: BYRON ROBERT ROUSH (C25Q3Q4YFN)"
 
