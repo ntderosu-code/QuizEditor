@@ -29,6 +29,44 @@ final class PersonaStore: ObservableObject {
         personas = Self.loadAll()
     }
 
+    // MARK: - Saving (user personas)
+
+    /// Writes a user persona to `Application Support/QuizEditor/Personas/<id>.json`
+    /// (overwriting the same id) and refreshes `personas`. Built-in personas are
+    /// read-only and never written. Local only; no network.
+    @discardableResult
+    func save(_ persona: Persona) -> Bool {
+        guard !persona.isBuiltIn, let url = Self.fileURL(for: persona.id) else { return false }
+        do {
+            try FileManager.default.createDirectory(
+                at: url.deletingLastPathComponent(), withIntermediateDirectories: true
+            )
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            try encoder.encode(persona).write(to: url)
+            reload()
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    /// Removes a user persona's file and refreshes `personas`. Built-ins are ignored.
+    func delete(_ persona: Persona) {
+        guard !persona.isBuiltIn, let url = Self.fileURL(for: persona.id) else { return }
+        try? FileManager.default.removeItem(at: url)
+        reload()
+    }
+
+    /// The on-disk file for a persona id. The filename is derived from the id so
+    /// editing the same persona overwrites its file rather than duplicating it.
+    static func fileURL(for id: String) -> URL? {
+        guard let directory = userPersonasDirectory() else { return nil }
+        let safe = id.map { $0.isLetter || $0.isNumber || $0 == "." || $0 == "-" || $0 == "_" ? $0 : "_" }
+        let name = String(safe).isEmpty ? "persona" : String(safe)
+        return directory.appendingPathComponent("\(name).json")
+    }
+
     // MARK: - Loading
 
     static func loadAll() -> [Persona] {
