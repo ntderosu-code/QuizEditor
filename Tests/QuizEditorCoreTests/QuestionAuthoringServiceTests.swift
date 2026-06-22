@@ -87,6 +87,22 @@ final class QuestionAuthoringServiceTests: XCTestCase {
         XCTAssertEqual(service.parseFeedback("Just plain text feedback."), "Just plain text feedback.")
     }
 
+    func testDistractorsPromptHasNoEchoablePlaceholders() {
+        // Small on-device models sometimes copy literal example values verbatim.
+        // The example must not contain answer-shaped placeholders that could be echoed.
+        let prompt = service.makeDistractorsPrompt(prompt: "What is 2 + 2?", correctAnswer: "4", count: 3)
+        XCTAssertFalse(prompt.lowercased().contains("first distractor"))
+        XCTAssertFalse(prompt.lowercased().contains("second distractor"))
+    }
+
+    func testParseDropsPlaceholderDistractors() {
+        // If a model echoes the schema placeholders anyway, they must be discarded.
+        let raw = """
+        { "distractors": ["first distractor", "Second Distractor", "Kyoto"] }
+        """
+        XCTAssertEqual(service.parseDistractors(raw), ["Kyoto"])
+    }
+
     func testGenerationPromptMentionsTopicAndCount() {
         let prompt = service.makeGenerationPrompt(topic: "Photosynthesis", count: 3, types: [.multipleChoice])
         XCTAssertTrue(prompt.contains("Photosynthesis"))

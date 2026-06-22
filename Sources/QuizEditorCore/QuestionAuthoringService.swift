@@ -93,15 +93,18 @@ public struct QuestionAuthoringService: Sendable {
         Stem: \(prompt)
         Correct answer: \(correctAnswer)
 
-        Respond with ONLY a JSON object, no prose and no code fences:
-        { "distractors": ["first distractor", "second distractor"] }
+        Respond with ONLY a JSON object, no prose and no code fences. Each array entry must be a real \
+        distractor for the stem above, never placeholder text. The shape, shown with distractors for a \
+        DIFFERENT question ("What is the capital of Japan?", correct answer "Tokyo"):
+        { "distractors": ["Kyoto", "Osaka", "Beijing"] }
         """
 
         let misconceptions = persona.aiProfile.labelsMisconceptions ? """
 
 
-        For each distractor, also name the misconception it targets. Use this shape instead:
-        { "distractors": [{"text": "the distractor", "misconception": "the misconception it reflects"}] }
+        For each distractor, also name the misconception it targets. Use this shape instead (again shown \
+        for that different question):
+        { "distractors": [{"text": "Kyoto", "misconception": "confusing the former capital with the current one"}] }
         """ : ""
 
         return base
@@ -132,15 +135,29 @@ public struct QuestionAuthoringService: Sendable {
         if let object = extractJSONObject(from: raw),
            let data = object.data(using: .utf8),
            let dto = try? JSONDecoder().decode(LabeledDistractorsDTO.self, from: data) {
-            let labeled = dto.distractors.compactMap { $0.asLabeled }
+            let labeled = dto.distractors.compactMap { $0.asLabeled }.filter { !Self.isPlaceholderDistractor($0.text) }
             if !labeled.isEmpty { return labeled }
         }
         if let array = extractJSONArray(from: raw),
            let data = array.data(using: .utf8),
            let items = try? JSONDecoder().decode([DistractorItemDTO].self, from: data) {
-            return items.compactMap { $0.asLabeled }
+            return items.compactMap { $0.asLabeled }.filter { !Self.isPlaceholderDistractor($0.text) }
         }
         return []
+    }
+
+    /// True for answer-shaped placeholder text a model might echo from an example
+    /// schema, like "first distractor" or "distractor 2". Such values are dropped
+    /// so they never land in a real question.
+    static func isPlaceholderDistractor(_ text: String) -> Bool {
+        let normalized = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        if normalized == "distractor" || normalized.hasPrefix("distractor ") { return true }
+        let ordinals: Set<String> = ["first", "second", "third", "fourth", "fifth", "another", "next", "plausible"]
+        let suffix = " distractor"
+        if normalized.hasSuffix(suffix) {
+            return ordinals.contains(String(normalized.dropLast(suffix.count)))
+        }
+        return false
     }
 
     // MARK: - Generate feedback
