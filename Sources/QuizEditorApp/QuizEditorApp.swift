@@ -178,8 +178,18 @@ struct ContentView: View {
     @State private var qtiValidation: QTIValidationContext?
     @State private var pendingExportEngine: CanvasQuizEngine?
     @State private var isIMSCCImporterPresented = false
+    @StateObject private var personaStore = PersonaStore()
+    @AppStorage("personaID") private var appDefaultPersonaID = Persona.generalID
+    @State private var isPersonaSheetPresented = false
 
-    private var lintFindings: [UUID: [LintFinding]] { QuestionLinter().findings(for: quiz) }
+    private var lintFindings: [UUID: [LintFinding]] { QuestionLinter().findings(for: quiz, persona: activePersona) }
+
+    /// The persona in effect for this quiz: its own override, else the app default,
+    /// else General. The linter reads it so inline lint, the sidebar status dot,
+    /// and Quality Check all reflect the active discipline.
+    private var activePersona: Persona {
+        personaStore.resolve(quiz.personaID ?? appDefaultPersonaID)
+    }
 
     /// A binding to the currently selected question's element in the quiz, so the
     /// AI panel's item-level tools can read and write it directly. Nil when nothing
@@ -353,6 +363,30 @@ struct ContentView: View {
                     Label("Quality Check", systemImage: "checklist")
                 }
                 .help("Run the offline item-writing linter across the whole quiz")
+
+                Menu {
+                    Picker("Persona", selection: $quiz.personaID) {
+                        Text("App Default (\(personaStore.resolve(appDefaultPersonaID).displayName))")
+                            .tag(String?.none)
+                        ForEach(personaStore.personas) { persona in
+                            Text(persona.displayName).tag(Optional(persona.id))
+                        }
+                    }
+                    .pickerStyle(.inline)
+
+                    Divider()
+
+                    Button {
+                        isPersonaSheetPresented = true
+                    } label: {
+                        Label("Manage Personas…", systemImage: "slider.horizontal.3")
+                    }
+                    .keyboardShortcut("p", modifiers: [.command, .option])
+                } label: {
+                    Label("Persona: \(activePersona.displayName)", systemImage: "person.crop.rectangle")
+                }
+                .menuIndicator(.hidden)
+                .help("Choose the discipline persona for this quiz (⌥⌘P to manage)")
             }
 
             ToolbarSpacer(.fixed)
@@ -427,7 +461,10 @@ struct ContentView: View {
             AIAuthoringSheet(quizTitle: quiz.title) { questions in addQuestions(questions, actionName: "Add AI Questions") }
         }
         .sheet(isPresented: $isLintSheetPresented) {
-            QuizLintSheet(quiz: quiz) { id in selectedQuestionID = id }
+            QuizLintSheet(quiz: quiz, persona: activePersona) { id in selectedQuestionID = id }
+        }
+        .sheet(isPresented: $isPersonaSheetPresented) {
+            PersonaManagementSheet(personas: personaStore.personas, quizPersonaID: $quiz.personaID)
         }
         .sheet(item: $importPickerContext) { context in
             ImportPickerSheet(
@@ -489,7 +526,8 @@ struct ContentView: View {
                 question: $quiz.questions[selectedIndex],
                 quizTitle: quiz.title,
                 questionNumber: selectedIndex + 1,
-                questionTotal: quiz.questions.count
+                questionTotal: quiz.questions.count,
+                persona: activePersona
             ) {
                 deleteQuestion(id: quiz.questions[selectedIndex].id)
             }
@@ -1187,6 +1225,8 @@ struct QuestionEditor: View {
     let quizTitle: String
     let questionNumber: Int
     let questionTotal: Int
+    /// The active persona, so the inline item-writing checks reflect the discipline.
+    var persona: Persona = .general
     let onDelete: () -> Void
 
     @AppStorage("aiProvider") private var provider = AIProvider.openAICompatible
@@ -1207,7 +1247,7 @@ struct QuestionEditor: View {
     }
 
     private var findings: [LintFinding] {
-        QuestionLinter().findings(for: question)
+        QuestionLinter().findings(for: question, persona: persona)
     }
 
     var body: some View {
