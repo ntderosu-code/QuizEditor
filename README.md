@@ -2,7 +2,7 @@
 
 <img src="docs/screenshots/app-icon.png" alt="Quiz Editor app icon: a bubble sheet / scantron" width="128" align="right">
 
-A native macOS app for authoring, reviewing, and round-tripping quizzes in open interoperability standards — **QTI** (1.2 and 2.1) and **IMS Common Cartridge** — so they import and export across **Canvas, Brightspace, Blackboard, Moodle, and other learning management systems** that support those formats. Write questions with rich text and images, get AI-assisted item-writing feedback, with accessibility built in from the start.
+A native macOS app for authoring, reviewing, and round-tripping quizzes in open interoperability standards — **QTI** (1.2 and 2.1) and **IMS Common Cartridge** — so they import and export across **Canvas, Brightspace, Blackboard, Moodle, and other learning management systems** that support those formats. Write questions with rich text and images, get AI-assisted item-writing feedback, tune the checks and AI to your discipline with a **persona**, and keep accessibility built in from the start.
 
 > Built entirely on Apple frameworks (SwiftUI, AppKit, WebKit). No third-party dependencies.
 
@@ -10,11 +10,15 @@ A native macOS app for authoring, reviewing, and round-tripping quizzes in open 
 
 ## Features
 
-- **Question editing** — multiple choice, multiple answer, true/false, fill-in-the-blank, short answer, essay, and matching.
+- **Question editing** — multiple choice, multiple answer, true/false, fill-in-the-blank, short answer, essay, matching, and **numeric** (graded by an exact value with a tolerance, a range, or a number of significant figures, with an optional advisory expected unit).
 - **Rich text (WYSIWYG)** — bold, italics, underline, lists, links, tables, and embedded images for prompts and feedback. Formatting round-trips through QTI.
 - **Question metadata** — per-question **tags**, **difficulty** (easy/medium/hard), and **points**. Tags and difficulty persist in the document and ride along in the exported QTI item metadata.
 - **Organize a long quiz** — a live **sidebar search**, **filter by tag or difficulty**, **drag-to-reorder** (with accessible Move Up/Down commands), **duplicate**, and a **quick-switch palette** (⌘⇧O) to jump to any question.
 - **Offline quality linter** — instant, rule-based item-writing checks (no network): missing/duplicate correct answers, "all of the above," unemphasized negative stems, length-bias cues, empty/duplicate options, missing feedback, and a/an grammatical cues. Inline in the editor, a per-question status dot in the sidebar (filled for a warning, hollow for a suggestion, so severity is never color alone), and a quiz-wide **Quality Check** summary.
+- **Discipline personas** — pick your field and the editor tunes itself to that discipline's item-writing practices across the whole app at once: the offline linter adds **field-specific rules** (a nursing "select all that apply" count cue, a chemistry answer missing its units, a stigmatizing term where person-first language belongs), the AI follows your field's **voice, distractor strategy, and terminology**, and the persona suggests the **question types and competency framework** your field leans on. Twenty-one personas ship built in across five families (Health, Natural sciences, STEM, Social sciences, Humanities). Every persona is **editable and forkable** in a guided editor (no JSON) and **shareable as a single file** — the built-ins are a starting point, not a cage. Persona suggestions are advisory and never block editing or change an export; accessibility rules stay on regardless of persona.
+- **Link the whole item** — tie a question to the **learning objectives** it assesses, the **sources** it draws on, and a reusable **stimulus** (a case, scenario, or passage written once and shared across questions). The linter can flag unlinked items as a suggestion. Links are author metadata and never appear in exported QTI/Common Cartridge.
+- **Competency frameworks & coverage** — map questions to a competency framework (built-in or your own) and get a **coverage report** showing which competencies are well covered and which have gaps, so a quiz can be checked against what it's meant to assess.
+- **Misconception tagging** — label each distractor with the specific misconception it represents, so wrong answers carry diagnostic meaning. Like other author metadata, these tags stay in the document and are never exported.
 - **Accessible by design** — alt text is *required* on images before export; VoiceOver labels, Dynamic Type, full keyboard operation, and color that is never the sole signal.
 - **AI assistant** — the assistant panel offers clearly labeled tools for the **whole quiz** (review, suggest revisions, draft feedback, launch *Author with AI*) and for the **selected question** (review, generate distractors, generate feedback), all driven by an editable instruction you control. Per-question review runs against established item-writing guidelines (not just grammar), with a before/after diff and per-field "apply." Works with an OpenAI-compatible API, Apple Foundation Models, or copy/paste to another assistant. On Apple Foundation Models, a long quiz is paged into batches that fit the on-device token limit and stitched back into one document.
 - **Document-based** — quizzes are native `.quizeditor` documents (JSON). Open with ⌘O or by double-clicking in Finder; New (⌘N), Save (⌘S), Save As, rename, and autosave/versions all work as expected. Structural edits (import, merge, reorder, duplicate, delete) are undoable.
@@ -73,7 +77,7 @@ swift test
 
 | Path | Purpose |
 |---|---|
-| `Sources/QuizEditorCore` | Models, QTI import/export, HTML utilities, AI review service |
+| `Sources/QuizEditorCore` | Models, QTI/Common Cartridge import/export, the offline linter, persona engine, linking and competency-framework models, AI prompt building, HTML utilities |
 | `Sources/QuizEditorApp` | SwiftUI app (editor, sidebar, AI panel) |
 | `Tests/QuizEditorCoreTests` | Unit tests for import/export, HTML handling, and AI parsing |
 
