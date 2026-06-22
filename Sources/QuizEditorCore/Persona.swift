@@ -218,6 +218,9 @@ public struct PersonaAIProfile: Codable, Sendable, Equatable {
     public var tone: String?
     public var safetyClauses: [String]
     public var temperatureOverride: Double?
+    /// Opt-in: when true, AI distractor generation labels each distractor with the
+    /// misconception it targets, stored on the answer's `misconceptionTag`.
+    public var labelsMisconceptions: Bool
 
     public init(
         systemPreamble: String = "",
@@ -227,7 +230,8 @@ public struct PersonaAIProfile: Codable, Sendable, Equatable {
         distractorStrategy: String? = nil,
         tone: String? = nil,
         safetyClauses: [String] = [],
-        temperatureOverride: Double? = nil
+        temperatureOverride: Double? = nil,
+        labelsMisconceptions: Bool = false
     ) {
         self.systemPreamble = systemPreamble
         self.reviewGuidelines = reviewGuidelines
@@ -237,6 +241,7 @@ public struct PersonaAIProfile: Codable, Sendable, Equatable {
         self.tone = tone
         self.safetyClauses = safetyClauses
         self.temperatureOverride = temperatureOverride
+        self.labelsMisconceptions = labelsMisconceptions
     }
 
     public init(from decoder: Decoder) throws {
@@ -249,11 +254,12 @@ public struct PersonaAIProfile: Codable, Sendable, Equatable {
         tone = try c.decodeIfPresent(String.self, forKey: .tone)
         safetyClauses = try c.decodeIfPresent([String].self, forKey: .safetyClauses) ?? []
         temperatureOverride = try c.decodeIfPresent(Double.self, forKey: .temperatureOverride)
+        labelsMisconceptions = try c.decodeIfPresent(Bool.self, forKey: .labelsMisconceptions) ?? false
     }
 
     private enum CodingKeys: String, CodingKey {
         case systemPreamble, reviewGuidelines, authoringGuidelines, feedbackGuidelines
-        case distractorStrategy, tone, safetyClauses, temperatureOverride
+        case distractorStrategy, tone, safetyClauses, temperatureOverride, labelsMisconceptions
     }
 }
 
@@ -412,7 +418,8 @@ public extension Persona {
             distractorStrategy: aiProfile.distractorStrategy ?? base.aiProfile.distractorStrategy,
             tone: aiProfile.tone ?? base.aiProfile.tone,
             safetyClauses: base.aiProfile.safetyClauses + aiProfile.safetyClauses,
-            temperatureOverride: aiProfile.temperatureOverride ?? base.aiProfile.temperatureOverride
+            temperatureOverride: aiProfile.temperatureOverride ?? base.aiProfile.temperatureOverride,
+            labelsMisconceptions: base.aiProfile.labelsMisconceptions || aiProfile.labelsMisconceptions
         )
 
         // Item types: child wins when it expresses a preference.

@@ -1457,13 +1457,13 @@ struct QuestionEditor: View {
         let stem = HTMLUtilities().plainText(fromHTML: question.prompt)
         let prompt = service.makeDistractorsPrompt(prompt: stem, correctAnswer: correct, count: 3, persona: persona)
         runGeneration(system: service.systemInstruction(persona: persona), user: prompt, temperature: persona.aiProfile.temperatureOverride ?? 0.7) { raw in
-            let distractors = service.parseDistractors(raw)
+            let distractors = service.parseLabeledDistractors(raw)
             guard !distractors.isEmpty else {
                 generationError = "No distractors were returned. Try again or rephrase the stem."
                 return
             }
             applyEdit { question in
-                question.answers.append(contentsOf: distractors.map { QuizAnswer(text: $0, isCorrect: false) })
+                question.answers.append(contentsOf: distractors.map { QuizAnswer(text: $0.text, isCorrect: false, misconceptionTag: $0.misconception) })
             }
         }
     }
@@ -1619,21 +1619,37 @@ struct AnswerEditor: View {
 
             ForEach($question.answers) { $answer in
                 let number = (question.answers.firstIndex { $0.id == answer.id } ?? 0) + 1
-                HStack(spacing: 10) {
-                    Toggle("Correct", isOn: correctBinding(for: answer.id))
-                        .toggleStyle(.checkbox)
-                        .frame(width: 90, alignment: .leading)
-                        .accessibilityLabel("Answer \(number) is correct")
-                    TextField("Answer text", text: $answer.text)
-                        .textFieldStyle(.roundedBorder)
-                        .accessibilityLabel("Answer \(number) text")
-                    Button(role: .destructive) {
-                        question.answers.removeAll { $0.id == answer.id }
-                    } label: {
-                        Image(systemName: "minus.circle")
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 10) {
+                        Toggle("Correct", isOn: correctBinding(for: answer.id))
+                            .toggleStyle(.checkbox)
+                            .frame(width: 90, alignment: .leading)
+                            .accessibilityLabel("Answer \(number) is correct")
+                        TextField("Answer text", text: $answer.text)
+                            .textFieldStyle(.roundedBorder)
+                            .accessibilityLabel("Answer \(number) text")
+                        Button(role: .destructive) {
+                            question.answers.removeAll { $0.id == answer.id }
+                        } label: {
+                            Image(systemName: "minus.circle")
+                        }
+                        .buttonStyle(.borderless)
+                        .accessibilityLabel("Remove answer \(number)")
                     }
-                    .buttonStyle(.borderless)
-                    .accessibilityLabel("Remove answer \(number)")
+
+                    // A distractor can name the misconception it targets (#25 / Phase 3).
+                    if showsMisconception, !answer.isCorrect {
+                        HStack(spacing: 10) {
+                            Spacer().frame(width: 90)
+                            Image(systemName: "lightbulb")
+                                .foregroundStyle(.secondary)
+                                .accessibilityHidden(true)
+                            TextField("Misconception this distractor targets (optional)", text: misconceptionBinding(for: answer.id))
+                                .textFieldStyle(.roundedBorder)
+                                .font(.caption)
+                                .accessibilityLabel("Answer \(number) misconception")
+                        }
+                    }
                 }
             }
         }
@@ -1644,6 +1660,22 @@ struct AnswerEditor: View {
 
     private var usesSingleCorrectAnswer: Bool {
         question.type == .multipleChoice || question.type == .trueFalse
+    }
+
+    /// Misconception tags apply to selectable distractors only.
+    private var showsMisconception: Bool {
+        question.type == .multipleChoice || question.type == .multipleAnswer
+    }
+
+    private func misconceptionBinding(for answerID: UUID) -> Binding<String> {
+        Binding(
+            get: { question.answers.first(where: { $0.id == answerID })?.misconceptionTag ?? "" },
+            set: { newValue in
+                guard let index = question.answers.firstIndex(where: { $0.id == answerID }) else { return }
+                let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                question.answers[index].misconceptionTag = trimmed.isEmpty ? nil : newValue
+            }
+        )
     }
 
     private func correctBinding(for answerID: UUID) -> Binding<Bool> {
@@ -2131,12 +2163,12 @@ struct AIPanel: View {
         let stem = HTMLUtilities().plainText(fromHTML: binding.wrappedValue.prompt)
         let prompt = service.makeDistractorsPrompt(prompt: stem, correctAnswer: correct, count: 3, persona: persona)
         runItemGeneration(system: service.systemInstruction(persona: persona), user: prompt, temperature: persona.aiProfile.temperatureOverride ?? 0.7, id: "item-distractors") { raw in
-            let distractors = service.parseDistractors(raw)
+            let distractors = service.parseLabeledDistractors(raw)
             guard !distractors.isEmpty else {
                 status = PanelStatus(text: "No distractors were returned. Try again or rephrase the stem.", isError: true)
                 return
             }
-            binding.wrappedValue.answers.append(contentsOf: distractors.map { QuizAnswer(text: $0, isCorrect: false) })
+            binding.wrappedValue.answers.append(contentsOf: distractors.map { QuizAnswer(text: $0.text, isCorrect: false, misconceptionTag: $0.misconception) })
             status = PanelStatus(text: "Added \(distractors.count) distractor\(distractors.count == 1 ? "" : "s") to this question.", isError: false)
         }
     }
