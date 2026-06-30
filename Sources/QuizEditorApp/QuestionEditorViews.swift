@@ -144,7 +144,12 @@ struct QuestionEditor: View {
                         Text("Reviewing…")
                     }
                 } else {
-                    Label("Review with AI", systemImage: "sparkles")
+                    // An explicit Image+Text (rather than Label) so .foregroundStyle(.white)
+                    // reliably overrides the prominent glass tint; a Label keeps the tint.
+                    HStack(spacing: 6) {
+                        Image(systemName: "sparkles")
+                        Text("Review with AI")
+                    }
                 }
             }
             .disabled(isReviewing)
