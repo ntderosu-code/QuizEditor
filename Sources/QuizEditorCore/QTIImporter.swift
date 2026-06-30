@@ -132,6 +132,14 @@ public struct QTIImporter: Sendable {
             sections.append(QTISection(title: sectionTitle(in: xml, fallback: fallback), kind: kind, questions: questions))
         }
 
+        // Keep quizzes in their cartridge order, then list the question banks
+        // (the "folders" an author sees) alphabetically by name so they're easy to
+        // scan and select in the import picker.
+        let assessments = sections.filter { $0.kind == .assessment }
+        let banks = sections.filter { $0.kind == .questionBank }
+            .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+        sections = assessments + banks
+
         // Fall back to the single-assessment importer for plain QTI packages.
         if sections.isEmpty {
             let quiz = try importQuiz(fromDirectory: directoryURL)
@@ -157,6 +165,12 @@ public struct QTIImporter: Sendable {
     private func sectionTitle(in xml: String, fallback: String) -> String {
         if let title = matches(pattern: #"<(?:assessment|objectbank)\b[^>]*\btitle="([^"]*)""#, in: xml).first, !title.isEmpty {
             return xmlUnescape(title)
+        }
+        // Canvas names a question bank with a `bank_title` qtimetadata field rather
+        // than a title attribute; each bank carries its own, so this keeps banks
+        // (the "folders" an author sees) as distinct, named sections.
+        if let bankTitle = firstFieldEntry(afterFieldLabel: "bank_title", in: xml), !bankTitle.isEmpty {
+            return xmlUnescape(bankTitle)
         }
         return (fallback as NSString).lastPathComponent
     }
