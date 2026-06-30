@@ -54,6 +54,51 @@ struct ImportPickerSheet: View {
 
     private var hasDuplicates: Bool { candidates.contains(where: \.isDuplicate) }
 
+    /// A run of candidates sharing one source (a quiz or a bank), in the order
+    /// they first appeared. Used to offer per-source select-all.
+    private struct CandidateGroup: Identifiable {
+        let id: String
+        let label: String?
+        let candidates: [ImportCandidate]
+    }
+
+    /// Show grouped sections only when the import spans more than one source
+    /// (e.g. a Common Cartridge with several quizzes/banks). Single-source
+    /// imports keep the simpler flat list.
+    private var isGrouped: Bool {
+        Set(candidates.compactMap(\.sourceLabel)).count > 1
+    }
+
+    private var groups: [CandidateGroup] {
+        var order: [String] = []
+        var buckets: [String: [ImportCandidate]] = [:]
+        var labels: [String: String?] = [:]
+        for candidate in filtered {
+            let key = candidate.sourceLabel ?? "\u{0}ungrouped"
+            if buckets[key] == nil {
+                order.append(key)
+                labels[key] = candidate.sourceLabel
+            }
+            buckets[key, default: []].append(candidate)
+        }
+        return order.map { key in
+            CandidateGroup(id: key, label: labels[key] ?? nil, candidates: buckets[key] ?? [])
+        }
+    }
+
+    private func selectedCount(in group: CandidateGroup) -> Int {
+        group.candidates.reduce(0) { $0 + (selectedIDs.contains($1.id) ? 1 : 0) }
+    }
+
+    private func toggleGroup(_ group: CandidateGroup) {
+        let ids = group.candidates.map(\.id)
+        if selectedCount(in: group) == ids.count {
+            selectedIDs.subtract(ids)
+        } else {
+            selectedIDs.formUnion(ids)
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 4) {
@@ -89,14 +134,16 @@ struct ImportPickerSheet: View {
             Divider()
 
             List {
-                ForEach(filtered) { candidate in
-                    ImportCandidateRow(
-                        candidate: candidate,
-                        isSelected: selectedIDs.contains(candidate.id),
-                        plainPrompt: plainPrompt(candidate.question)
-                    ) { isOn in
-                        if isOn { selectedIDs.insert(candidate.id) } else { selectedIDs.remove(candidate.id) }
+                if isGrouped {
+                    ForEach(groups) { group in
+                        Section {
+                            ForEach(group.candidates) { candidate in row(candidate) }
+                        } header: {
+                            groupHeader(group)
+                        }
                     }
+                } else {
+                    ForEach(filtered) { candidate in row(candidate) }
                 }
             }
             .listStyle(.inset)
@@ -124,6 +171,48 @@ struct ImportPickerSheet: View {
         .frame(minWidth: 620, minHeight: 560)
     }
 
+    @ViewBuilder
+    private func row(_ candidate: ImportCandidate) -> some View {
+        ImportCandidateRow(
+            candidate: candidate,
+            isSelected: selectedIDs.contains(candidate.id),
+            plainPrompt: plainPrompt(candidate.question),
+            // Source is already shown in the group header when grouped.
+            showsSource: !isGrouped
+        ) { isOn in
+            if isOn { selectedIDs.insert(candidate.id) } else { selectedIDs.remove(candidate.id) }
+        }
+    }
+
+    /// A tappable section header that selects or deselects every question from one
+    /// quiz or bank, with a tri-state checkbox reflecting the group's state.
+    private func groupHeader(_ group: CandidateGroup) -> some View {
+        let total = group.candidates.count
+        let selected = selectedCount(in: group)
+        let symbol = selected == 0 ? "square" : (selected == total ? "checkmark.square.fill" : "minus.square.fill")
+        let label = group.label ?? "Other questions"
+        return Button {
+            toggleGroup(group)
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: symbol)
+                    .foregroundStyle(selected == 0 ? Color.secondary : Color.accentColor)
+                    .accessibilityHidden(true)
+                Text(label)
+                    .font(.headline)
+                Spacer()
+                Text("\(selected)/\(total)")
+                    .font(.caption)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(label), \(selected) of \(total) selected")
+        .accessibilityHint(selected == total ? "Deselect all questions in this group" : "Select all questions in this group")
+    }
+
     private func plainPrompt(_ question: QuizQuestion) -> String {
         let text = html.plainText(fromHTML: question.prompt)
         return text.isEmpty ? "Untitled question" : text
@@ -134,6 +223,7 @@ private struct ImportCandidateRow: View {
     let candidate: ImportCandidate
     let isSelected: Bool
     let plainPrompt: String
+    var showsSource: Bool = true
     let onToggle: (Bool) -> Void
 
     var body: some View {
@@ -147,7 +237,7 @@ private struct ImportCandidateRow: View {
                         Text(candidate.question.type.displayName)
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        if let source = candidate.sourceLabel {
+                        if showsSource, let source = candidate.sourceLabel {
                             Text("·").font(.caption).foregroundStyle(.secondary)
                             Text(source)
                                 .font(.caption)

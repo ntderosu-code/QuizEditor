@@ -106,17 +106,30 @@ public struct QTIImporter: Sendable {
         guard FileManager.default.fileExists(atPath: manifestURL.path) else { throw ImportError.manifestNotFound }
         let manifest = try String(contentsOf: manifestURL, encoding: .utf8)
 
-        // Scan every XML file the manifest references; keep the ones that actually
+        // Scan every QTI file the manifest references; keep the ones that actually
         // contain questions (assessments and objectbanks), skipping pages/settings.
-        let xmlHrefs = uniquePreservingOrder(hrefs(in: manifest).filter { $0.hasSuffix(".xml") })
+        // Canvas stores question banks only in `non_cc_assessments/<id>.xml.qti`
+        // files, so accept the `.qti` extension as well as `.xml`.
+        let xmlHrefs = uniquePreservingOrder(hrefs(in: manifest).filter { $0.hasSuffix(".xml") || $0.hasSuffix(".qti") })
         var sections: [QTISection] = []
         for href in xmlHrefs {
             let fileURL = directoryURL.appendingPathComponent(href)
             guard let xml = try? String(contentsOf: fileURL, encoding: .utf8) else { continue }
+            let isObjectBank = xml.contains("<objectbank")
+
+            // Canvas's `.qti` files duplicate every assessment that already exists
+            // in CC-standard form (the `<id>/assessment_qti.xml` files). Mine the
+            // `.qti` copies for objectbanks only, so direct items are not imported
+            // twice.
+            if href.hasSuffix(".qti") && !isObjectBank { continue }
+
             let questions = extractItems(from: xml).compactMap { parseItem($0) }
             guard !questions.isEmpty else { continue }
-            let kind: QTISection.Kind = xml.contains("<objectbank") ? .questionBank : .assessment
-            sections.append(QTISection(title: sectionTitle(in: xml, fallback: href), kind: kind, questions: questions))
+            let kind: QTISection.Kind = isObjectBank ? .questionBank : .assessment
+            // Canvas auto-generated banks often have no title; show a readable
+            // label rather than the bank's GUID filename.
+            let fallback = isObjectBank ? "Question Bank" : (href as NSString).lastPathComponent
+            sections.append(QTISection(title: sectionTitle(in: xml, fallback: fallback), kind: kind, questions: questions))
         }
 
         // Fall back to the single-assessment importer for plain QTI packages.

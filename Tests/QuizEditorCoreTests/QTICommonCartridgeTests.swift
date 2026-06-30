@@ -77,6 +77,65 @@ final class QTICommonCartridgeTests: XCTestCase {
         XCTAssertEqual(sections.flatMap(\.questions).count, 3)
     }
 
+    /// Writes a Canvas-style cartridge where the question bank lives only in a
+    /// `non_cc_assessments/<id>.xml.qti` file (Canvas's native QTI), and that same
+    /// folder also holds a duplicate of the CC-standard assessment. Mirrors a real
+    /// Canvas export: the bank's items are not inlined into the quiz, and the
+    /// quiz's only group pulls from the bank via `<sourcebank_ref>`.
+    private func makeCanvasCartridge() throws -> URL {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: dir.appendingPathComponent("non_cc_assessments"), withIntermediateDirectories: true)
+
+        let item1 = mcItem(ident: "q1", prompt: "What is 2 + 2?", correct: "a", options: [("a", "4"), ("b", "5")])
+        let bankItem = mcItem(ident: "b1", prompt: "What gas do plants absorb?", correct: "a", options: [("a", "CO2"), ("b", "O2")])
+
+        // CC-standard assessment (one direct item).
+        let quiz = "<questestinterop><assessment ident=\"a1\" title=\"Sample Quiz\"><section ident=\"root\">\(item1)</section></assessment></questestinterop>"
+        // Canvas-native copy of the SAME assessment (same ident) plus a group that
+        // pulls from the bank. Importing this would double-count q1.
+        let quizNative = """
+        <questestinterop><assessment ident="a1" title="Sample Quiz"><section ident="root">\(item1)<section ident="grp" title="Group"><selection_ordering><selection><sourcebank_ref>ob1</sourcebank_ref><selection_number>1</selection_number></selection></selection_ordering></section></section></assessment></questestinterop>
+        """
+        let bank = "<questestinterop><objectbank ident=\"ob1\" title=\"Bank One\">\(bankItem)</objectbank></questestinterop>"
+        let manifest = """
+        <manifest>
+          <resources>
+            <resource identifier="r1" type="imsqti_xmlv1p2/imscc_xmlv1p1/assessment" href="a1/assessment_qti.xml"><file href="a1/assessment_qti.xml"/></resource>
+            <resource identifier="r2" type="associatedcontent/imscc_xmlv1p1/learning-application-resource" href="non_cc_assessments/a1.xml.qti"><file href="non_cc_assessments/a1.xml.qti"/></resource>
+            <resource identifier="r3" type="associatedcontent/imscc_xmlv1p1/learning-application-resource" href="non_cc_assessments/ob1.xml.qti"><file href="non_cc_assessments/ob1.xml.qti"/></resource>
+          </resources>
+        </manifest>
+        """
+
+        try FileManager.default.createDirectory(at: dir.appendingPathComponent("a1"), withIntermediateDirectories: true)
+        try quiz.write(to: dir.appendingPathComponent("a1/assessment_qti.xml"), atomically: true, encoding: .utf8)
+        try quizNative.write(to: dir.appendingPathComponent("non_cc_assessments/a1.xml.qti"), atomically: true, encoding: .utf8)
+        try bank.write(to: dir.appendingPathComponent("non_cc_assessments/ob1.xml.qti"), atomically: true, encoding: .utf8)
+        try manifest.write(to: dir.appendingPathComponent("imsmanifest.xml"), atomically: true, encoding: .utf8)
+        return dir
+    }
+
+    func testImportsBankFromCanvasNonCCAssessmentsFolder() throws {
+        let dir = try makeCanvasCartridge()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let sections = try QTIImporter().importSections(fromDirectory: dir)
+
+        // The objectbank in non_cc_assessments/ob1.xml.qti must be imported.
+        let bankSection = try XCTUnwrap(sections.first { $0.kind == .questionBank })
+        XCTAssertEqual(bankSection.title, "Bank One")
+        XCTAssertEqual(bankSection.questions.count, 1)
+        XCTAssertEqual(bankSection.questions.first?.prompt, "What gas do plants absorb?")
+
+        // The quiz must appear exactly once with its single direct item, not
+        // duplicated by the non_cc copy of the same assessment.
+        let quizSections = sections.filter { $0.kind == .assessment }
+        XCTAssertEqual(quizSections.count, 1)
+        XCTAssertEqual(quizSections.first?.questions.count, 1)
+        XCTAssertEqual(sections.flatMap(\.questions).count, 2)
+    }
+
     func testPlainQTIAssessmentFallsBackToSingleSection() throws {
         // A package whose manifest references an assessment file that holds items
         // inline still yields one assessment section.
