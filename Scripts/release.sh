@@ -88,7 +88,15 @@ echo "▸ Zipping for notarization…"
 rm -f "$ZIP_PATH"
 /usr/bin/ditto -c -k --keepParent "$APP_BUNDLE" "$ZIP_PATH"
 
-if xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" >/dev/null 2>&1; then
+# Probe the notary credentials before submitting. We distinguish two failure
+# modes that the old code conflated: a genuinely-absent profile (fine, fall back
+# to an un-notarized build) versus a profile that exists but the request errored
+# (e.g. an expired Apple Program License Agreement). The latter must fail loudly
+# rather than silently shipping an un-notarized build.
+echo "▸ Checking notary credentials (profile: $NOTARY_PROFILE)…"
+NOTARY_CHECK_OUTPUT="$(xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" 2>&1)" && NOTARY_CHECK_STATUS=0 || NOTARY_CHECK_STATUS=$?
+
+if [ "$NOTARY_CHECK_STATUS" -eq 0 ]; then
     echo "▸ Submitting to Apple notary service (profile: $NOTARY_PROFILE)…"
     xcrun notarytool submit "$ZIP_PATH" --keychain-profile "$NOTARY_PROFILE" --wait
     echo "▸ Stapling ticket…"
@@ -98,10 +106,19 @@ if xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" >/dev/null 2>&1
     rm -f "$ZIP_PATH"
     /usr/bin/ditto -c -k --keepParent "$APP_BUNDLE" "$ZIP_PATH"
     echo "✅ Notarized, stapled, and zipped: $ZIP_PATH"
-else
+elif printf '%s' "$NOTARY_CHECK_OUTPUT" | grep -q "No Keychain password item found"; then
     echo "⚠️  Notary profile '$NOTARY_PROFILE' not found — produced a SIGNED but UN-NOTARIZED build."
     echo "    Create the profile once, then re-run this script:"
     echo "      xcrun notarytool store-credentials $NOTARY_PROFILE \\"
     echo "        --apple-id \"<apple-id>\" --team-id C25Q3Q4YFN --password \"<app-specific-password>\""
     echo "    Signed zip: $ZIP_PATH"
+else
+    echo "❌ Notary credentials check failed for profile '$NOTARY_PROFILE'. Apple returned:" >&2
+    printf '%s\n' "$NOTARY_CHECK_OUTPUT" | sed 's/^/    /' >&2
+    echo >&2
+    echo "    The app is SIGNED but NOT notarized; the signed zip is at: $ZIP_PATH" >&2
+    echo "    A 403 'required agreement' error means the Account Holder must accept the latest" >&2
+    echo "    Apple Developer Program License Agreement at https://developer.apple.com/account," >&2
+    echo "    then re-run this script." >&2
+    exit 1
 fi
