@@ -136,6 +136,52 @@ final class QTICommonCartridgeTests: XCTestCase {
         XCTAssertEqual(sections.flatMap(\.questions).count, 2)
     }
 
+    /// A Canvas objectbank with no `title` attribute, named only by a
+    /// `bank_title` qtimetadata field (the real Canvas export shape).
+    private func namedBank(ident: String, bankTitle: String, item: String) -> String {
+        """
+        <questestinterop><objectbank ident="\(ident)">
+          <qtimetadata>
+            <qtimetadatafield><fieldlabel>bank_title</fieldlabel><fieldentry>\(bankTitle)</fieldentry></qtimetadatafield>
+            <qtimetadatafield><fieldlabel>bank_state</fieldlabel><fieldentry>active</fieldentry></qtimetadatafield>
+          </qtimetadata>
+          \(item)
+        </objectbank></questestinterop>
+        """
+    }
+
+    func testNamesBanksFromBankTitleMetadataAndKeepsThemSeparate() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: dir.appendingPathComponent("non_cc_assessments"), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let bankA = namedBank(ident: "ob1", bankTitle: "5805Quiz1",
+                              item: mcItem(ident: "a1", prompt: "Bank A question?", correct: "a", options: [("a", "Yes"), ("b", "No")]))
+        let bankB = namedBank(ident: "ob2", bankTitle: "Unfiled Questions",
+                              item: mcItem(ident: "b1", prompt: "Bank B question?", correct: "a", options: [("a", "Yes"), ("b", "No")]))
+        // List the banks out of alphabetical order in the manifest so the test
+        // exercises the sort, not the file order.
+        let manifest = """
+        <manifest><resources>
+          <resource identifier="ob2" type="associatedcontent/imscc_xmlv1p1/learning-application-resource" href="non_cc_assessments/ob2.xml.qti"><file href="non_cc_assessments/ob2.xml.qti"/></resource>
+          <resource identifier="ob1" type="associatedcontent/imscc_xmlv1p1/learning-application-resource" href="non_cc_assessments/ob1.xml.qti"><file href="non_cc_assessments/ob1.xml.qti"/></resource>
+        </resources></manifest>
+        """
+        try bankA.write(to: dir.appendingPathComponent("non_cc_assessments/ob1.xml.qti"), atomically: true, encoding: .utf8)
+        try bankB.write(to: dir.appendingPathComponent("non_cc_assessments/ob2.xml.qti"), atomically: true, encoding: .utf8)
+        try manifest.write(to: dir.appendingPathComponent("imsmanifest.xml"), atomically: true, encoding: .utf8)
+
+        let sections = try QTIImporter().importSections(fromDirectory: dir)
+
+        // Each bank must remain its own section, titled from bank_title (not all
+        // collapsed into a generic "Question Bank"), and sorted alphabetically by
+        // name regardless of manifest order.
+        let banks = sections.filter { $0.kind == .questionBank }
+        XCTAssertEqual(banks.map(\.title), ["5805Quiz1", "Unfiled Questions"])
+        XCTAssertFalse(banks.contains { $0.title == "Question Bank" })
+        XCTAssertEqual(try XCTUnwrap(banks.first { $0.title == "5805Quiz1" }).questions.first?.prompt, "Bank A question?")
+    }
+
     func testPlainQTIAssessmentFallsBackToSingleSection() throws {
         // A package whose manifest references an assessment file that holds items
         // inline still yields one assessment section.
