@@ -157,15 +157,66 @@
     backdrop-filter: saturate(1.4) blur(10px);
     border-bottom: 1px solid var(--line);
   }
-  .nav { display: flex; align-items: center; gap: 1.5rem; padding-block: 0.7rem; }
+  .nav { display: flex; align-items: center; gap: 1rem 1.5rem; padding-block: 0.7rem; flex-wrap: wrap; }
   .brand { display: flex; align-items: center; gap: 0.6rem; font-weight: 600; color: var(--ink); text-decoration: none; letter-spacing: -0.01em; }
   .brand img { inline-size: 30px; block-size: 30px; border-radius: 8px; }
   .brand span { font-family: "Bricolage Grotesque", system-ui, sans-serif; font-size: 1.12rem; }
-  .nav .links { display: flex; gap: 1.4rem; margin-inline-start: auto; align-items: center; }
+  .nav .links { display: flex; gap: 0.75rem 1.4rem; margin-inline-start: auto; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
   .nav .links a:not(.btn) { color: var(--ink-soft); text-decoration: none; font-size: var(--step--1); font-weight: 500; }
   .nav .links a:not(.btn):hover { color: var(--ink); }
-  .nav .ghbtn { display: none; }
-  @media (min-width: 720px) { .nav .ghbtn { display: inline-flex; } }
+  .navlist { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1.4rem; list-style: none; margin: 0; padding: 0; }
+
+  /* Below the breakpoint the section links collapse into a native disclosure, so
+     the header can never force the page wider than the viewport. Above it the
+     summary is hidden and the list sits inline, wrapping to a second row when
+     it runs out of room. */
+  .navmenu { position: relative; }
+  .navmenu > summary {
+    display: inline-flex; align-items: center; gap: 0.45em; cursor: pointer;
+    font-size: var(--step--1); font-weight: 500; color: var(--ink-soft);
+    padding: 0.35rem 0.8rem; border: 1px solid var(--line); border-radius: 999px;
+    list-style: none;
+  }
+  .navmenu > summary::-webkit-details-marker { display: none; }
+  .navmenu > summary::after {
+    content: ""; inline-size: 0.4em; block-size: 0.4em;
+    border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
+    transform: translateY(-0.15em) rotate(45deg);
+  }
+  .navmenu[open] > summary::after { transform: translateY(0.1em) rotate(225deg); }
+  .navmenu > summary:hover { color: var(--ink); border-color: var(--line-strong); }
+  .navmenu[open] > .navlist {
+    position: absolute; inset-inline-end: 0; inset-block-start: calc(100% + 0.55rem);
+    flex-direction: column; align-items: stretch; gap: 0; min-inline-size: 12rem;
+    background: var(--paper); border: 1px solid var(--line); border-radius: 14px;
+    padding: 0.5rem 0.9rem; box-shadow: 0 14px 30px rgba(20, 20, 40, 0.12); z-index: 60;
+  }
+  .navmenu[open] > .navlist a { display: block; padding: 0.5rem 0; }
+
+  /* Phone header: tighten enough that brand, menu, and Download share one row,
+     so the sticky bar stays short. It still wraps if the text is scaled up. */
+  @media (max-width: 759px) {
+    .nav { gap: 0.5rem 0.6rem; padding-block: 0.55rem; }
+    .brand span { font-size: 1rem; }
+    .brand img { inline-size: 26px; block-size: 26px; }
+    .nav .links { gap: 0.5rem; }
+    .nav .ghbtn { padding-inline: 0.8rem; }
+    .navmenu > summary { padding-inline: 0.65rem; min-block-size: 44px; }
+  }
+
+  @media (min-width: 760px) {
+    .navmenu > summary { display: none; }
+    /* Older engines hide the closed disclosure's children; newer Chrome hides
+       ::details-content instead. Both need overriding to show the list inline. */
+    .navmenu::details-content { content-visibility: visible; block-size: auto; }
+    .navmenu > .navlist,
+    .navmenu[open] > .navlist {
+      display: flex; position: static; flex-direction: row; align-items: center;
+      gap: 0.6rem 1.4rem; min-inline-size: 0;
+      background: none; border: 0; border-radius: 0; padding: 0; box-shadow: none;
+    }
+    .navmenu[open] > .navlist a { display: inline; padding: 0; }
+  }
 
   .btn {
     display: inline-flex; align-items: center; gap: 0.5em;
@@ -196,7 +247,13 @@
   .lede { font-size: var(--step-1); color: var(--ink-soft); max-width: 40ch; margin: 1.4rem 0 0; line-height: 1.45; font-weight: 400; }
   .lede strong { color: var(--ink); font-weight: 600; }
   .hero-cta { display: flex; flex-wrap: wrap; gap: 0.8rem; margin-top: 2rem; }
-  .hero-meta { margin-top: 1.8rem; font-size: var(--step--1); color: var(--ink-soft); letter-spacing: 0.02em; }
+  /* Each item keeps its own words together, but the row wraps between items, so
+     the line never becomes one unbreakable token that widens the hero grid. */
+  .hero-meta {
+    margin-top: 1.8rem; font-size: var(--step--1); color: var(--ink-soft); letter-spacing: 0.02em;
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.35rem 0.9rem;
+  }
+  .hero-meta > * + *::before { content: "·"; margin-inline-end: 0.9rem; color: var(--line-strong); }
   .hero-meta b { color: var(--teal-deep); font-weight: 500; }
 
   .shot { position: relative; }
@@ -215,7 +272,10 @@
   .ticks.left { left: clamp(0.3rem, 1.5vw, 1.1rem); }
 
   /* ---- Generic section ---- */
-  section { position: relative; }
+  /* The glow behind each screenshot deliberately bleeds past its box, so clip it
+     horizontally here. `clip` rather than `hidden`: it makes no scroll container,
+     which keeps the sticky header working. */
+  section { position: relative; overflow-x: clip; }
   .pad { padding-block: clamp(3rem, 8vw, 6rem); }
   .eyebrow { font-size: var(--step--1); color: var(--teal-deep); font-weight: 600; letter-spacing: 0.01em; margin: 0 0 0.7rem; display: flex; align-items: center; gap: 0.55rem; }
   h2.sec { font-size: var(--step-3); max-width: 18ch; }
@@ -344,11 +404,16 @@
       <span>Quiz&nbsp;Editor</span>
     </a>
     <nav class="links" aria-label="Primary">
-      <a href="#authoring">Authoring</a>
-      <a href="#review">AI &amp; review</a>
-      <a href="#personas">Personas</a>
-      <a href="#access">Accessibility</a>
-      <a href="#contribute">Contribute</a>
+      <details class="navmenu">
+        <summary>Sections</summary>
+        <ul class="navlist">
+          <li><a href="#authoring">Authoring</a></li>
+          <li><a href="#review">AI &amp; review</a></li>
+          <li><a href="#personas">Personas</a></li>
+          <li><a href="#access">Accessibility</a></li>
+          <li><a href="#contribute">Contribute</a></li>
+        </ul>
+      </details>
       <a class="btn btn-primary ghbtn" href="https://github.com/ntderosu-code/QuizEditor/releases">Download</a>
     </nav>
   </div>
@@ -375,7 +440,7 @@
           <a class="btn btn-primary" href="https://github.com/ntderosu-code/QuizEditor/releases">Download for macOS</a>
           <a class="btn btn-ghost" href="https://github.com/ntderosu-code/QuizEditor">View on GitHub</a>
         </div>
-        <p class="hero-meta mono reveal d3">macOS&nbsp;14+&nbsp;&nbsp;·&nbsp;&nbsp;Free&nbsp;and&nbsp;open&nbsp;source&nbsp;&nbsp;·&nbsp;&nbsp;<b>No&nbsp;account,&nbsp;no&nbsp;cloud</b></p>
+        <p class="hero-meta mono reveal d3"><span>macOS&nbsp;14+</span><span>Free&nbsp;and&nbsp;open&nbsp;source</span><b>No&nbsp;account,&nbsp;no&nbsp;cloud</b></p>
       </div>
       <div class="shot reveal d2">
         <img src="screenshots/editor.png" width="2400" height="1520" fetchpriority="high"
