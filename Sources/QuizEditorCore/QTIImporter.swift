@@ -343,10 +343,54 @@ public struct QTIImporter: Sendable {
 }
 
 func xmlUnescape(_ value: String) -> String {
-    value
+    // Numeric references decode first so that an escaped ampersand sequence like
+    // "&amp;#x27;" survives as the literal text "&#x27;" rather than collapsing
+    // into an apostrophe. For the same reason "&amp;" is replaced last.
+    decodeNumericCharacterReferences(in: value)
         .replacingOccurrences(of: "&lt;", with: "<")
         .replacingOccurrences(of: "&gt;", with: ">")
         .replacingOccurrences(of: "&quot;", with: "\"")
         .replacingOccurrences(of: "&apos;", with: "'")
         .replacingOccurrences(of: "&amp;", with: "&")
+}
+
+/// Decodes `&#39;` and `&#x27;` style references, which Canvas uses for
+/// apostrophes and smart quotes instead of the named entities. Anything that
+/// isn't a well-formed reference to a valid scalar is left exactly as written.
+private func decodeNumericCharacterReferences(in value: String) -> String {
+    guard value.contains("&#") else { return value }
+
+    var result = ""
+    var remainder = Substring(value)
+
+    while let start = remainder.range(of: "&#") {
+        result.append(contentsOf: remainder[remainder.startIndex..<start.lowerBound])
+        let afterMarker = start.upperBound
+
+        guard let end = remainder[afterMarker...].firstIndex(of: ";") else {
+            // No terminator left in the string, so nothing further can decode.
+            result.append(contentsOf: remainder[start.lowerBound...])
+            return result
+        }
+
+        var digits = remainder[afterMarker..<end]
+        var radix = 10
+        if let first = digits.first, first == "x" || first == "X" {
+            radix = 16
+            digits = digits.dropFirst()
+        }
+
+        if !digits.isEmpty,
+           let code = UInt32(digits, radix: radix),
+           let scalar = Unicode.Scalar(code) {
+            result.append(Character(scalar))
+        } else {
+            result.append(contentsOf: remainder[start.lowerBound...end])
+        }
+
+        remainder = remainder[remainder.index(after: end)...]
+    }
+
+    result.append(contentsOf: remainder)
+    return result
 }
