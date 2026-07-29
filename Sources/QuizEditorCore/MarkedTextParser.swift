@@ -277,11 +277,14 @@ public struct MarkedTextParser: Sendable {
             }
         }
 
-        let secondIndex = trimmedLine.index(after: trimmedLine.startIndex)
-        guard secondIndex < trimmedLine.endIndex else { return trimmedLine }
-        let secondCharacter = trimmedLine[secondIndex]
-        if (secondCharacter == "." || secondCharacter == ")") && isEnumerationCharacter(firstCharacter) {
-            return String(trimmedLine[trimmedLine.index(after: secondIndex)...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        // Match a short run of enumeration characters, not just one, so multi-digit
+        // numbering ("10.", "104)") is stripped the same way "1." is.
+        let token = trimmedLine.prefix(while: isEnumerationCharacter)
+        let separatorIndex = trimmedLine.index(trimmedLine.startIndex, offsetBy: token.count)
+        guard isShortEnumerationToken(token), separatorIndex < trimmedLine.endIndex else { return trimmedLine }
+        let separator = trimmedLine[separatorIndex]
+        if separator == "." || separator == ")" {
+            return String(trimmedLine[trimmedLine.index(after: separatorIndex)...]).trimmingCharacters(in: .whitespacesAndNewlines)
         }
 
         return trimmedLine

@@ -182,4 +182,28 @@ final class MarkedTextParserTests: XCTestCase {
             XCTAssertEqual(error as? MarkedTextParser.ParseError, .missingPrompt(questionNumber: 1))
         }
     }
+
+    func testStripsMultiDigitQuestionNumbers() throws {
+        let source = """
+        9. Ninth question
+        a. Choice 1
+        *b. Choice 2
+
+        10. True or False: tenth question
+        a. Choice 1
+        *b. Choice 2
+
+        104) Hundred and fourth question
+        a. Choice 1
+        *b. Choice 2
+        """
+
+        let quiz = try MarkedTextParser().parse(source)
+
+        XCTAssertEqual(quiz.questions.map(\.prompt), [
+            "Ninth question",
+            "True or False: tenth question",
+            "Hundred and fourth question"
+        ])
+    }
 }
