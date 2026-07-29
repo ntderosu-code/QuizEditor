@@ -125,4 +125,64 @@ final class QTIImporterTests: XCTestCase {
         XCTAssertEqual(imported.questions[0].answers.map(\.isCorrect), [true, true, false])
         XCTAssertEqual(imported.questions[0].feedback, "A and B are correct.")
     }
+
+    // Canvas escapes apostrophes and smart quotes as numeric character references
+    // rather than named entities, so these have to decode too.
+    func testDecodesNumericCharacterReferences() {
+        XCTAssertEqual(xmlUnescape("the cell&#x27;s nucleus"), "the cell's nucleus")
+        XCTAssertEqual(xmlUnescape("It&#8217;s here"), "It\u{2019}s here")
+        XCTAssertEqual(xmlUnescape("2 &#60; 3"), "2 < 3")
+        XCTAssertEqual(xmlUnescape("caf&#233;"), "caf\u{e9}")
+        XCTAssertEqual(xmlUnescape("&#X27;"), "'", "hex marker is case-insensitive")
+        XCTAssertEqual(xmlUnescape("&#x1F600;"), "\u{1F600}", "astral plane scalars decode")
+    }
+
+    func testLeavesNonEntityTextAlone() {
+        XCTAssertEqual(xmlUnescape("100% &#; &# &#x; a#5;"), "100% &#; &# &#x; a#5;")
+        XCTAssertEqual(xmlUnescape("&#xD800;"), "&#xD800;", "unpaired surrogates are not valid scalars")
+        XCTAssertEqual(xmlUnescape("&#999999999999;"), "&#999999999999;", "out-of-range values stay literal")
+    }
+
+    // A literal "&#x27;" in the source is written &amp;#x27;, and must survive as
+    // text rather than being decoded into an apostrophe.
+    func testDoesNotDecodeEscapedAmpersandSequences() {
+        XCTAssertEqual(xmlUnescape("&amp;#x27;"), "&#x27;")
+        XCTAssertEqual(xmlUnescape("&amp;amp;"), "&amp;")
+    }
+
+    // End to end against Canvas-shaped XML: the prompt, an answer, and the quiz
+    // title all carry numeric references the way a real Canvas export does.
+    func testDecodesNumericReferencesInImportedQuestionText() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+
+        let item = """
+        <item ident="q1" title="q1">
+          <itemmetadata><qtimetadata><qtimetadatafield><fieldlabel>question_type</fieldlabel><fieldentry>multiple_choice_question</fieldentry></qtimetadatafield></qtimetadata></itemmetadata>
+          <presentation>
+            <material><mattext texttype="text/html">Which organelle holds the cell&#x27;s DNA?</mattext></material>
+            <response_lid ident="response1" rcardinality="Single"><render_choice>
+              <response_label ident="a"><material><mattext texttype="text/html">The cell&#8217;s nucleus</mattext></material></response_label>
+              <response_label ident="b"><material><mattext texttype="text/html">Ribosome</mattext></material></response_label>
+            </render_choice></response_lid>
+          </presentation>
+          <resprocessing><outcomes><decvar/></outcomes><respcondition><conditionvar><varequal respident="response1">a</varequal></conditionvar></respcondition></resprocessing>
+        </item>
+        """
+        let quiz = "<questestinterop><assessment ident=\"a1\" title=\"Marta&#x27;s Quiz\"><section ident=\"root\">\(item)</section></assessment></questestinterop>"
+        try quiz.write(to: directory.appendingPathComponent("quiz1.xml"), atomically: true, encoding: .utf8)
+        let manifest = """
+        <manifest><resources>
+          <resource identifier="r1" type="imsqti_xmlv1p2/imscc_xmlv1p1/assessment" href="quiz1.xml"><file href="quiz1.xml"/></resource>
+        </resources></manifest>
+        """
+        try manifest.write(to: directory.appendingPathComponent("imsmanifest.xml"), atomically: true, encoding: .utf8)
+
+        let sections = try QTIImporter().importSections(fromDirectory: directory)
+
+        XCTAssertEqual(sections[0].title, "Marta's Quiz")
+        XCTAssertEqual(sections[0].questions[0].prompt, "Which organelle holds the cell's DNA?")
+        XCTAssertEqual(sections[0].questions[0].answers[0].text, "The cell\u{2019}s nucleus")
+    }
 }
