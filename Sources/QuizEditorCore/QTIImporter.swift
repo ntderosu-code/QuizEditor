@@ -230,9 +230,7 @@ public struct QTIImporter: Sendable {
         guard !prompt.isEmpty else { return nil }
 
         if type == .matching {
-            let pairs = matches(pattern: #"<response_lid[^>]*>\s*<material><mattext[^>]*>([\s\S]*?)</mattext></material>[\s\S]*?<response_label[^>]*>\s*<material><mattext[^>]*>([\s\S]*?)</mattext>"#, in: xml, groupCount: 2)
-                .map { MatchingPair(prompt: renderField($0[0]), match: renderField($0[1])) }
-            return QuizQuestion(type: .matching, prompt: prompt, matches: pairs, feedback: classicFeedback(in: xml))
+            return QuizQuestion(type: .matching, prompt: prompt, matches: classicMatchingPairs(in: xml), feedback: classicFeedback(in: xml))
         }
 
         if type == .numeric {
@@ -311,6 +309,33 @@ public struct QTIImporter: Sendable {
 
     private func attribute(_ name: String, in xml: String) -> String? {
         matches(pattern: #"\#(name)\s*=\s*\"([^\"]*)\""#, in: xml).first
+    }
+
+    /// Rebuilds a classic matching item's prompt/match pairs. Canvas lists every
+    /// right-side option inside each prompt's render_choice and keeps the answer
+    /// key in resprocessing, so the correct option has to come from the varequal
+    /// for that response_lid. Survey exports omit resprocessing entirely (nothing
+    /// is scored); pair each prompt with the option at its own position so the
+    /// author still gets a full, editable set of pairs.
+    private func classicMatchingPairs(in xml: String) -> [MatchingPair] {
+        let answerKey = Dictionary(
+            matches(pattern: #"<varequal[^>]*respident\s*=\s*\"([^\"]+)\"[^>]*>([^<]+)</varequal>"#, in: xml, groupCount: 2)
+                .map { ($0[0], $0[1].trimmingCharacters(in: .whitespacesAndNewlines)) },
+            uniquingKeysWith: { first, _ in first }
+        )
+
+        let lidBlocks = matches(pattern: #"<response_lid\s+ident=\"([^\"]+)\"[^>]*>([\s\S]*?)</response_lid>"#, in: xml, groupCount: 2)
+        return lidBlocks.enumerated().compactMap { index, block in
+            let (lidIdent, body) = (block[0], block[1])
+            guard let promptText = matches(pattern: #"<material><mattext[^>]*>([\s\S]*?)</mattext>"#, in: body).first else { return nil }
+
+            let options = matches(pattern: #"<response_label\s+ident=\"([^\"]+)\"[^>]*>\s*<material><mattext[^>]*>([\s\S]*?)</mattext>"#, in: body, groupCount: 2)
+            let keyed = answerKey[lidIdent].flatMap { correctID in options.first { $0[0] == correctID } }
+            let positional = index < options.count ? options[index] : options.first
+            let match = keyed ?? positional
+
+            return MatchingPair(prompt: renderField(promptText), match: renderField(match?[1] ?? ""))
+        }
     }
 
     private func matches(pattern: String, in text: String) -> [String] {

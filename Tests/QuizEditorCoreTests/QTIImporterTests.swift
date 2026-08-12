@@ -185,4 +185,115 @@ final class QTIImporterTests: XCTestCase {
         XCTAssertEqual(sections[0].questions[0].prompt, "Which organelle holds the cell's DNA?")
         XCTAssertEqual(sections[0].questions[0].answers[0].text, "The cell\u{2019}s nucleus")
     }
+
+    // Canvas-authored matching items list every right-side option inside each
+    // prompt's render_choice; the answer key lives in resprocessing. The importer
+    // must pair prompts with their varequal targets, not the first listed option.
+    func testImportsCanvasMatchingUsingAnswerKeyFromResprocessing() throws {
+        let imported = try importClassicItem("""
+        <item ident="q1" title="Match sounds">
+          <itemmetadata><qtimetadata><qtimetadatafield><fieldlabel>question_type</fieldlabel><fieldentry>matching_question</fieldentry></qtimetadatafield></qtimetadata></itemmetadata>
+          <presentation>
+            <material><mattext texttype="text/html">Match each animal to its sound.</mattext></material>
+            <response_lid ident="response_1000">
+              <material><mattext texttype="text/plain">Dog</mattext></material>
+              <render_choice>
+                <response_label ident="101"><material><mattext>Meow</mattext></material></response_label>
+                <response_label ident="102"><material><mattext>Bark</mattext></material></response_label>
+                <response_label ident="103"><material><mattext>Moo</mattext></material></response_label>
+              </render_choice>
+            </response_lid>
+            <response_lid ident="response_2000">
+              <material><mattext texttype="text/plain">Cat</mattext></material>
+              <render_choice>
+                <response_label ident="101"><material><mattext>Meow</mattext></material></response_label>
+                <response_label ident="102"><material><mattext>Bark</mattext></material></response_label>
+                <response_label ident="103"><material><mattext>Moo</mattext></material></response_label>
+              </render_choice>
+            </response_lid>
+          </presentation>
+          <resprocessing>
+            <outcomes><decvar maxvalue="100" minvalue="0" varname="SCORE" vartype="Decimal"/></outcomes>
+            <respcondition><conditionvar><varequal respident="response_1000">102</varequal></conditionvar><setvar varname="SCORE" action="Add">50</setvar></respcondition>
+            <respcondition><conditionvar><varequal respident="response_2000">101</varequal></conditionvar><setvar varname="SCORE" action="Add">50</setvar></respcondition>
+          </resprocessing>
+        </item>
+        """)
+
+        XCTAssertEqual(imported.type, .matching)
+        XCTAssertEqual(imported.matches.map(\.prompt), ["Dog", "Cat"])
+        XCTAssertEqual(imported.matches.map(\.match), ["Bark", "Meow"])
+    }
+
+    // Canvas survey exports carry the same matching presentation but no scoring,
+    // so there is no answer key. Fall back to pairing each prompt with the option
+    // at its own position instead of giving every prompt the first option.
+    func testImportsSurveyMatchingWithoutResprocessingPositionally() throws {
+        let imported = try importClassicItem("""
+        <item ident="q1" title="Match sounds">
+          <itemmetadata><qtimetadata><qtimetadatafield><fieldlabel>question_type</fieldlabel><fieldentry>matching_question</fieldentry></qtimetadatafield></qtimetadata></itemmetadata>
+          <presentation>
+            <material><mattext texttype="text/html">Match each animal to its sound.</mattext></material>
+            <response_lid ident="response_1000">
+              <material><mattext texttype="text/plain">Dog</mattext></material>
+              <render_choice>
+                <response_label ident="101"><material><mattext>Bark</mattext></material></response_label>
+                <response_label ident="102"><material><mattext>Meow</mattext></material></response_label>
+              </render_choice>
+            </response_lid>
+            <response_lid ident="response_2000">
+              <material><mattext texttype="text/plain">Cat</mattext></material>
+              <render_choice>
+                <response_label ident="101"><material><mattext>Bark</mattext></material></response_label>
+                <response_label ident="102"><material><mattext>Meow</mattext></material></response_label>
+              </render_choice>
+            </response_lid>
+          </presentation>
+        </item>
+        """)
+
+        XCTAssertEqual(imported.type, .matching)
+        XCTAssertEqual(imported.matches.map(\.prompt), ["Dog", "Cat"])
+        XCTAssertEqual(imported.matches.map(\.match), ["Bark", "Meow"])
+    }
+
+    // A matching question that survives import must export a usable Canvas item
+    // again: every prompt keeps its own match in the classic answer key.
+    func testMatchingSurvivesImportThenClassicExport() throws {
+        let quiz = Quiz(title: "Round Trip", questions: [
+            QuizQuestion(type: .matching, prompt: "Match.", matches: [
+                MatchingPair(prompt: "Dog", match: "Bark"),
+                MatchingPair(prompt: "Cat", match: "Meow")
+            ])
+        ])
+        let archiveURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".zip")
+        defer { try? FileManager.default.removeItem(at: archiveURL) }
+        try QTIPackageWriter(engine: .classicQuizzes).writeZip(for: quiz, to: archiveURL)
+
+        let imported = try QTIImporter().importQuiz(fromZipAt: archiveURL)
+
+        XCTAssertEqual(imported.questions[0].type, .matching)
+        XCTAssertEqual(imported.questions[0].matches.map(\.prompt), ["Dog", "Cat"])
+        XCTAssertEqual(imported.questions[0].matches.map(\.match), ["Bark", "Meow"])
+    }
+
+    /// Wraps a single classic item in a manifest + assessment on disk and
+    /// imports it, returning the one parsed question.
+    private func importClassicItem(_ item: String) throws -> QuizQuestion {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+
+        let quiz = "<questestinterop><assessment ident=\"a1\" title=\"Survey\"><section ident=\"root\">\(item)</section></assessment></questestinterop>"
+        try quiz.write(to: directory.appendingPathComponent("quiz1.xml"), atomically: true, encoding: .utf8)
+        let manifest = """
+        <manifest><resources>
+          <resource identifier="r1" type="imsqti_xmlv1p2/imscc_xmlv1p1/assessment" href="quiz1.xml"><file href="quiz1.xml"/></resource>
+        </resources></manifest>
+        """
+        try manifest.write(to: directory.appendingPathComponent("imsmanifest.xml"), atomically: true, encoding: .utf8)
+
+        let sections = try QTIImporter().importSections(fromDirectory: directory)
+        return try XCTUnwrap(sections.first?.questions.first)
+    }
 }
