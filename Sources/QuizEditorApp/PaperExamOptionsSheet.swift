@@ -2,7 +2,7 @@ import SwiftUI
 import QuizEditorCore
 
 /// Collects options for a printable paper exam, then hands them back so the
-/// caller can render and save the HTML.
+/// caller can render and save the PDF.
 struct PaperExamOptionsSheet: View {
     let onExport: (PaperExamOptions) -> Void
     @Environment(\.dismiss) private var dismiss

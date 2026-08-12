@@ -25,7 +25,8 @@ public struct PaperExamOptions: Sendable, Equatable {
     }
 }
 
-/// Builds a clean, print-ready paper exam (HTML → print / Save as PDF) suitable
+/// Builds a clean, print-ready paper exam (print-styled HTML the app renders
+/// straight to a paginated PDF; see PaperExamPDFExporter) suitable
 /// for a campus testing center. Two outputs come from one quiz: a blank student
 /// copy and a separate instructor answer-key copy.
 public struct PaperExamBuilder: Sendable {
