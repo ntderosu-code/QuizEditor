@@ -397,15 +397,15 @@ extension ContentView {
 
     func exportPaperExam(_ options: PaperExamOptions) {
         let panel = NSSavePanel()
-        panel.allowedContentTypes = [.html]
+        panel.allowedContentTypes = [.pdf]
         let base = (defaultExportFilename as NSString).deletingPathExtension
-        panel.nameFieldStringValue = base + (options.includeAnswerKey ? "-answer-key.html" : "-exam.html")
+        panel.nameFieldStringValue = base + (options.includeAnswerKey ? "-answer-key.pdf" : "-exam.pdf")
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        do {
-            let document = PaperExamBuilder().document(for: quiz, options: options)
-            try document.write(to: url, atomically: true, encoding: .utf8)
-        } catch {
-            errorMessage = "Paper exam export failed: \(error.localizedDescription)"
+        let document = PaperExamBuilder().document(for: quiz, options: options)
+        PaperExamPDFExporter().export(html: document, to: url) { error in
+            if let error {
+                errorMessage = "Paper exam export failed: \(error.localizedDescription)"
+            }
         }
     }
 
