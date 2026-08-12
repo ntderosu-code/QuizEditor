@@ -52,6 +52,33 @@ final class DisciplinePackTests: XCTestCase {
         XCTAssertTrue(prompt.localizedCaseInsensitiveContains("clinical judgment"))
     }
 
+    func testNursingPreambleNamesAllSixCJMMSkills() {
+        // NCSBN's Clinical Judgment Measurement Model has six cognitive skills;
+        // the preamble must not drop "generate solutions".
+        let prompt = review.systemInstruction(persona: .nursing)
+        for skill in ["recognize cues", "analyze cues", "prioritize hypotheses",
+                      "generate solutions", "take action", "evaluate outcomes"] {
+            XCTAssertTrue(prompt.localizedCaseInsensitiveContains(skill), "missing CJMM skill: \(skill)")
+        }
+    }
+
+    func testNursingFlagsMgSO4SeparatelyFromMorphine() {
+        // MS/MSO4 and MgSO4 are all on the Joint Commission Do Not Use list, but
+        // they resolve to different drugs; the suggestion must not tell an author
+        // who wrote MgSO4 to spell out "morphine".
+        let question = QuizQuestion(
+            type: .multipleChoice,
+            prompt: "The provider orders MgSO4 for the client with preeclampsia. What is the priority assessment?",
+            answers: [QuizAnswer(text: "Deep tendon reflexes", isCorrect: true), QuizAnswer(text: "Pupil response", isCorrect: false)],
+            feedback: "x"
+        )
+        let suggestions = linter.findings(for: question, persona: .nursing)
+            .filter { $0.rule.rawValue.hasPrefix("terminology:") }
+            .map(\.suggestion)
+        XCTAssertTrue(suggestions.contains { $0.localizedCaseInsensitiveContains("magnesium sulfate") })
+        XCTAssertFalse(suggestions.contains { $0.localizedCaseInsensitiveContains("morphine") })
+    }
+
     // MARK: - Medicine
 
     func testMedicineEscalatesNegativeStemToWarning() {
@@ -81,16 +108,16 @@ final class DisciplinePackTests: XCTestCase {
         XCTAssertTrue(fired.contains(.numericMissingUnit))
     }
 
-    // MARK: - Public Health
+    // MARK: - Medicine causation language
 
-    func testPublicHealthFlagsCausationLanguage() {
+    func testMedicineFlagsCausationLanguage() {
         let question = QuizQuestion(
             type: .multipleChoice,
             prompt: "Smoking causes lung cancer in this cohort study.",
             answers: [QuizAnswer(text: "True", isCorrect: true), QuizAnswer(text: "False", isCorrect: false)],
             feedback: "x"
         )
-        let flagged = linter.findings(for: question, persona: .publicHealth)
+        let flagged = linter.findings(for: question, persona: .medicine)
             .contains { $0.suggestion.localizedCaseInsensitiveContains("associated with") }
         XCTAssertTrue(flagged)
     }

@@ -108,6 +108,7 @@ struct PersonaManagementSheet: View {
                             PersonaRow(
                                 persona: persona,
                                 isActive: persona.id == effectiveID,
+                                onSelect: { select(persona) },
                                 onEdit: persona.isBuiltIn ? nil : { editingPersona = persona },
                                 onDuplicate: { editingPersona = persona.fork() },
                                 onExport: { export(persona) },
@@ -126,6 +127,7 @@ struct PersonaManagementSheet: View {
             }
         }
         .frame(minWidth: 520, minHeight: 560)
+        .onAppear(perform: sanitizeStalePersonaIDs)
         .sheet(item: $editingPersona) { persona in
             PersonaEditorSheet(persona: persona) { saved in
                 store.save(saved)
@@ -135,6 +137,26 @@ struct PersonaManagementSheet: View {
     }
 
     // MARK: - Actions
+
+    /// Clicking a row makes that persona this quiz's persona (an explicit
+    /// override, even when it matches the app default, so the choice sticks if
+    /// the default later changes).
+    private func select(_ persona: Persona) {
+        quizPersonaID = persona.id
+        notice = "\u{201C}\(persona.displayName)\u{201D} is now this quiz's persona."
+    }
+
+    /// A saved default or quiz override may name a persona that no longer exists
+    /// (e.g. a built-in removed in an update). The engine already falls back to
+    /// General; clear the stale ids so the pickers don't show a blank selection.
+    private func sanitizeStalePersonaIDs() {
+        if !personas.contains(where: { $0.id == appDefaultPersonaID }) {
+            appDefaultPersonaID = Persona.generalID
+        }
+        if let id = quizPersonaID, !personas.contains(where: { $0.id == id }) {
+            quizPersonaID = nil
+        }
+    }
 
     private func newPersona() -> Persona {
         Persona(id: "user.\(UUID().uuidString.lowercased())", displayName: "New Persona", isBuiltIn: false)
@@ -191,6 +213,7 @@ struct PersonaManagementSheet: View {
 struct PersonaRow: View {
     let persona: Persona
     let isActive: Bool
+    let onSelect: () -> Void
     var onEdit: (() -> Void)?
     var onDuplicate: (() -> Void)?
     var onExport: (() -> Void)?
@@ -198,33 +221,46 @@ struct PersonaRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            Image(systemName: isActive ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(isActive ? Color.accentColor : Color.secondary)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 8) {
-                    Text(persona.displayName)
-                        .font(.headline)
-                    Text(personaFamilyName(persona.family))
-                        .font(.caption)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color.secondary.opacity(0.15))
-                        .clipShape(.capsule)
-                    if persona.isBuiltIn {
-                        Text("Built-in")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
+            // The row body is a real button (not a tap gesture) so selection is
+            // keyboard-operable; the actions menu stays a sibling so the two
+            // controls never nest.
+            Button(action: onSelect) {
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: isActive ? "checkmark.circle.fill" : "circle")
+                        .foregroundStyle(isActive ? Color.accentColor : Color.secondary)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 8) {
+                            Text(persona.displayName)
+                                .font(.headline)
+                            Text(personaFamilyName(persona.family))
+                                .font(.caption)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.secondary.opacity(0.15))
+                                .clipShape(.capsule)
+                            if persona.isBuiltIn {
+                                Text("Built-in")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        if !persona.summary.isEmpty {
+                            Text(persona.summary)
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
+                    Spacer(minLength: 8)
                 }
-                if !persona.summary.isEmpty {
-                    Text(persona.summary)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+                .contentShape(.rect)
             }
-            Spacer(minLength: 8)
+            .buttonStyle(.plain)
+            .help("Use \u{201C}\(persona.displayName)\u{201D} for this quiz")
+            .accessibilityLabel("\(persona.displayName), \(personaFamilyName(persona.family))\(persona.summary.isEmpty ? "" : ". \(persona.summary)")")
+            .accessibilityHint("Makes this persona active for this quiz")
+            .accessibilityAddTraits(isActive ? [.isSelected] : [])
             actionsMenu
         }
         .padding(12)
@@ -235,8 +271,6 @@ struct PersonaRow: View {
             RoundedRectangle(cornerRadius: 10)
                 .stroke(isActive ? Color.accentColor.opacity(0.5) : Color.secondary.opacity(0.18))
         )
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(persona.displayName), \(personaFamilyName(persona.family))\(isActive ? ", active for this quiz" : "")\(persona.summary.isEmpty ? "" : ". \(persona.summary)")")
     }
 
     @ViewBuilder
