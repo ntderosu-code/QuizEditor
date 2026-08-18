@@ -332,7 +332,6 @@ struct ContentView: View {
                 } label: {
                     Label("Preview", systemImage: "eye")
                 }
-                .keyboardShortcut("p", modifiers: [.command, .shift])
                 .help("Preview a formatted version of the whole quiz (⇧⌘P)")
             }
 
@@ -393,7 +392,6 @@ struct ContentView: View {
                 } label: {
                     Label(AppCopy.aiSuggestions, systemImage: isAIPanelVisible ? "sidebar.trailing" : "sidebar.right")
                 }
-                .keyboardShortcut("a", modifiers: [.command, .option])
                 .help(isAIPanelVisible ? "Hide the AI Suggestions panel (⌥⌘A)" : "Show the AI Suggestions panel (⌥⌘A)")
             }
         }

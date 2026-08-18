@@ -170,7 +170,6 @@ struct AIPanel: View {
                 } label: {
                     Label("Configure…", systemImage: "gearshape")
                 }
-                .keyboardShortcut(",", modifiers: .command)
             } label: {
                 Text(provider.displayName)
                     .frame(maxWidth: .infinity, alignment: .leading)

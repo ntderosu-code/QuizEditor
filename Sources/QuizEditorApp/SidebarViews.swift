@@ -117,12 +117,10 @@ struct SidebarView: View {
                 Button(action: onAddQuestion) {
                     Label("Add Question", systemImage: "plus")
                 }
-                .keyboardShortcut("n", modifiers: [.command, .shift])
                 .help("Add a new question (⇧⌘N)")
 
                 Menu {
                     Button("Marked Text…") { onImportMarkedText() }
-                        .keyboardShortcut("i", modifiers: [.command, .shift])
                     Divider()
                     Section("QTI Package (.zip)") {
                         Button("Keep Formatting…") { onImportQTI(true) }
