@@ -54,7 +54,8 @@ struct AIPanel: View {
     /// The id of the tool that is currently running, or nil when idle. Used to show
     /// a spinner on the active button and disable the others.
     @State private var runningAction: String?
-    @State private var isConfigPresented = false
+    @Environment(\.openSettings) private var openSettings
+    @AppStorage("settingsTab") private var settingsTab = SettingsTab.general
     @State private var aiResult: AIResultContext?
     /// Drives the paginated, applyable whole-quiz sheet. The mode picks which
     /// tool ran (review, revisions, or feedback) and the loader/focus to use.
@@ -107,9 +108,6 @@ struct AIPanel: View {
             .padding(.leading, 24)
             .padding(.trailing, 32)
             .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .sheet(isPresented: $isConfigPresented) {
-            AISettingsSheet()
         }
         .sheet(item: $aiResult) { result in
             AIResultSheet(result: result)
@@ -165,10 +163,14 @@ struct AIPanel: View {
                 Divider()
 
                 Button {
-                    isConfigPresented = true
+                    // openSettings() cannot pick a pane, so steer it by writing
+                    // the tab the window restores before opening it.
+                    settingsTab = .ai
+                    openSettings()
                 } label: {
                     Label("Configure…", systemImage: "gearshape")
                 }
+                .keyboardShortcut(",", modifiers: .command)
             } label: {
                 Text(provider.displayName)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -524,67 +526,6 @@ struct AIPanel: View {
         aiResult = AIResultContext(title: title, markdown: markdown)
     }
 }
-
-/// Modal that configures the AI provider and API credentials. Edits the same
-/// @AppStorage-backed values the AI panel reads, so changes persist immediately.
-struct AISettingsSheet: View {
-    @AppStorage("aiProvider") private var provider = AIProvider.openAICompatible
-    @AppStorage("aiAPIKey") private var apiKey = ""
-    @AppStorage("aiEndpoint") private var endpoint = "https://api.openai.com/v1/chat/completions"
-    @AppStorage("aiModel") private var model = "gpt-4o-mini"
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("AI Configuration")
-                .font(.title2.bold())
-                .padding(20)
-
-            Divider()
-
-            Form {
-                Picker("Provider", selection: $provider) {
-                    ForEach(AIProvider.allCases) { provider in
-                        Text(provider.displayName).tag(provider)
-                    }
-                }
-
-                switch provider {
-                case .openAICompatible:
-                    Section("API Credentials") {
-                        SecureField("API key", text: $apiKey, prompt: Text("sk-…"))
-                        TextField("Endpoint", text: $endpoint, prompt: Text("https://api.openai.com/v1/chat/completions"))
-                        TextField("Model", text: $model, prompt: Text("gpt-4o-mini"))
-                    }
-                case .copyPaste:
-                    Section {
-                        Text("Copies a model-ready prompt to your clipboard. Paste the response back into the panel — no API key needed.")
-                            .foregroundStyle(.secondary)
-                    }
-                case .foundationModels:
-                    Section {
-                        Text("Uses Apple Foundation Models on-device when Apple Intelligence is available on this Mac. No API key needed.")
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
-            .formStyle(.grouped)
-
-            Divider()
-
-            HStack {
-                Spacer()
-                Button("Done") { dismiss() }
-                    .buttonStyle(.glassProminent)
-                    .foregroundStyle(.white)
-                    .keyboardShortcut(.defaultAction)
-            }
-            .padding(20)
-        }
-        .frame(width: 460, height: 420)
-    }
-}
-
 
 /// Which quiz-level AI tool opened the paginated, applyable sheet, and how that
 /// sheet should present and load each question.

@@ -21,6 +21,9 @@ struct SidebarView: View {
     let onDelete: (UUID) -> Void
     let onMove: (IndexSet, Int) -> Void
     let onNudge: (UUID, Int) -> Void
+    /// Owned by `ContentView` so Edit ▸ Filter Questions (⌘F) can focus the
+    /// field from the menu bar.
+    var filterFieldFocus: FocusState<Bool>.Binding
 
     @State private var searchText = ""
     @State private var difficultyFilter: QuizDifficulty?
@@ -102,6 +105,9 @@ struct SidebarView: View {
             }
         }
         .listStyle(.sidebar)
+        .onDeleteCommand {
+            if let id = selectedQuestionID { onDelete(id) }
+        }
         .navigationTitle("Quiz")
         .safeAreaInset(edge: .top) { searchBar }
         // The sidebar's own controls sit on the toolbar bar above it (Liquid
@@ -159,6 +165,8 @@ struct SidebarView: View {
                 TextField("Filter questions", text: $searchText)
                     .textFieldStyle(.plain)
                     .accessibilityLabel("Filter questions")
+                    .focused(filterFieldFocus)
+                    .onExitCommand { searchText = "" }
                 if !searchText.isEmpty {
                     Button { searchText = "" } label: {
                         Image(systemName: "xmark.circle.fill")

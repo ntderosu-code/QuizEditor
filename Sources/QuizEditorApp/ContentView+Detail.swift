@@ -212,6 +212,62 @@ extension ContentView {
         )
     }
 
+    func makeDocumentActions() -> QuizDocumentActions {
+        QuizDocumentActions(
+            isAIPanelVisible: isAIPanelVisible,
+            hasQuestions: !quiz.questions.isEmpty,
+            exportQTIPackage: { engine in prepareExport(engine: engine) },
+            exportFormattedDocument: exportFormattedDocument,
+            exportPaperExam: { isPaperExamPresented = true },
+            importMarkedText: { isImporterPresented = true },
+            importQTIPackage: { keepFormatting in
+                importPreservesFormatting = keepFormatting
+                isQTIImporterPresented = true
+            },
+            importCommonCartridge: { isIMSCCImporterPresented = true },
+            mergeFromFile: { isMergeImporterPresented = true },
+            openQuestionBank: { isBankPresented = true },
+            showPreview: {
+                previewScopedToQuestion = false
+                isPreviewPresented = true
+            },
+            checkQuiz: { isLintSheetPresented = true },
+            showCoverageReport: { isCoverageSheetPresented = true },
+            manageFrameworks: { isFrameworkSheetPresented = true },
+            manageReviewProfiles: { isPersonaSheetPresented = true },
+            toggleAIPanel: { isAIPanelVisible.toggle() },
+            focusFilterField: { isFilterFieldFocused = true }
+        )
+    }
+
+    // MARK: - Drag and drop
+
+    /// Handles files dropped anywhere on the window. Packages go through the
+    /// same import pickers as the File menu, so a drop is never destructive:
+    /// the user still chooses which questions land in the quiz.
+    func handleDroppedFiles(_ urls: [URL]) -> Bool {
+        guard let (kind, url) = urls.lazy.compactMap({ url in
+            DroppedImportKind(url: url).map { ($0, url) }
+        }).first else {
+            errorMessage = "Drop a QTI package (.zip), a Common Cartridge (.imscc), or a Quiz Editor document to import questions from it."
+            return false
+        }
+
+        switch kind {
+        case .qtiPackage:
+            importPreservesFormatting = true
+            importQTIArchive(.success([url]))
+        case .commonCartridge:
+            importPreservesFormatting = true
+            importCommonCartridge(.success([url]))
+        case .quizDocument:
+            // Merge rather than open: File ▸ Open is how you open a document,
+            // and a drop onto an open quiz reads as "bring these in here."
+            mergeFromFiles(.success([url]))
+        }
+        return true
+    }
+
     // MARK: - Import / merge (via the question picker)
 
     func importMarkedText(_ text: String) {

@@ -39,6 +39,14 @@ struct QuizDocument: FileDocument {
 
 @main
 struct QuizEditorApp: App {
+    /// Personas and frameworks are app-wide libraries, not per-document data, so
+    /// they are owned once here. Each document window used to build its own
+    /// store, which meant editing a persona in one window left every other
+    /// window showing the stale copy — and the Settings scene, which lives
+    /// outside `DocumentGroup`, could not see them at all.
+    @StateObject private var personaStore = PersonaStore()
+    @StateObject private var frameworkStore = FrameworkStore()
+
     init() {
         // Open straight into a blank untitled document instead of showing the
         // open-file panel on launch.
@@ -51,6 +59,8 @@ struct QuizEditorApp: App {
         DocumentGroup(newDocument: QuizDocument()) { file in
             ContentView(quiz: file.$document.quiz)
                 .frame(minWidth: 760, minHeight: 480)
+                .environmentObject(personaStore)
+                .environmentObject(frameworkStore)
         }
         .windowToolbarStyle(.unified)
         .defaultSize(width: 1200, height: 760)
@@ -58,7 +68,14 @@ struct QuizEditorApp: App {
             CommandGroup(after: .help) {
                 AcknowledgementsMenuButton()
             }
+            QuizDocumentCommands()
             QuestionCommands()
+        }
+
+        Settings {
+            AppSettingsView()
+                .environmentObject(personaStore)
+                .environmentObject(frameworkStore)
         }
 
         Window("Acknowledgements", id: "acknowledgements") {
@@ -181,12 +198,17 @@ struct ContentView: View {
     @State var qtiValidation: QTIValidationContext?
     @State var pendingExportEngine: CanvasQuizEngine?
     @State var isIMSCCImporterPresented = false
-    @StateObject var personaStore = PersonaStore()
+    @EnvironmentObject var personaStore: PersonaStore
     @AppStorage("personaID") var appDefaultPersonaID = Persona.generalID
     @State var isPersonaSheetPresented = false
-    @StateObject var frameworkStore = FrameworkStore()
+    @EnvironmentObject var frameworkStore: FrameworkStore
     @State var isCoverageSheetPresented = false
     @State var isFrameworkSheetPresented = false
+
+    /// Focuses the sidebar's filter field, so Edit ▸ Filter Questions (⌘F) has
+    /// somewhere to land. Declared here rather than in `SidebarView` because the
+    /// menu command reaches the document through this view's focused value.
+    @FocusState var isFilterFieldFocused: Bool
 
     /// Cached quiz-wide lint, recomputed only when the quiz or active persona
     /// changes (not on every render — selection, sheet toggles, etc.).
@@ -236,7 +258,8 @@ struct ContentView: View {
                 onDuplicate: duplicateQuestion(id:),
                 onDelete: deleteQuestion(id:),
                 onMove: moveQuestions(from:to:),
-                onNudge: nudgeQuestion(id:by:)
+                onNudge: nudgeQuestion(id:by:),
+                filterFieldFocus: $isFilterFieldFocused
             )
             .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 320)
         } detail: {
@@ -322,6 +345,9 @@ struct ContentView: View {
                     Button(AppCopy.checkQuiz) {
                         isLintSheetPresented = true
                     }
+                    Button("Competency Coverage…") {
+                        isCoverageSheetPresented = true
+                    }
 
                     Divider()
 
@@ -343,7 +369,11 @@ struct ContentView: View {
                     } label: {
                         Label("Manage Review Profiles…", systemImage: "slider.horizontal.3")
                     }
-                    .keyboardShortcut("p", modifiers: [.command, .option])
+                    Button {
+                        isFrameworkSheetPresented = true
+                    } label: {
+                        Label("Manage Frameworks…", systemImage: "list.bullet.indent")
+                    }
                 } label: {
                     Label(AppCopy.checkQuiz, systemImage: "checklist")
                 } primaryAction: {
@@ -462,6 +492,10 @@ struct ContentView: View {
             }
         }
         .focusedValue(\.quizCommandActions, makeCommandActions())
+        .focusedValue(\.quizDocumentActions, makeDocumentActions())
+        .dropDestination(for: URL.self) { urls, _ in
+            handleDroppedFiles(urls)
+        }
         .alert(
             "Something Went Wrong",
             isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } }),
