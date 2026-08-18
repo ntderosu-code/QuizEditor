@@ -483,12 +483,42 @@ struct ImportSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
+        // Fixed header, scrolling body, fixed footer: expanding the formatting
+        // guide grows the body instead of pushing the Import button off the sheet.
         VStack(alignment: .leading, spacing: 16) {
-            Text("Import Marked Text")
-                .font(.title2.bold())
-            Text("Choose the correct-answer marker used in the text. Distractors can still start with `-`; matching pairs use `Term => Match`.")
-                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Import Marked Text")
+                    .font(.title2.bold())
+                Text("Choose the correct-answer marker used in the text. Distractors can still start with `-`; matching pairs use `Term => Match`.")
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    importFields
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.trailing, 2)
+            }
+
+            HStack {
+                Spacer()
+                Button("Cancel") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button("Import") { onImport(importText) }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(importText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(24)
+        .frame(minWidth: 720, minHeight: 620)
+    }
+
+    @ViewBuilder
+    private var importFields: some View {
+        Group {
             HStack(alignment: .top, spacing: 12) {
                 LabeledField("Correct marker") {
                     TextField("*", text: $correctMarkerSymbol)
@@ -514,19 +544,7 @@ struct ImportSheet: View {
             )
 
             MarkedTextFormatReference()
-
-            HStack {
-                Spacer()
-                Button("Cancel") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                Button("Import") { onImport(importText) }
-                    .buttonStyle(.borderedProminent)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(importText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
         }
-        .padding(24)
-        .frame(minWidth: 720, minHeight: 620)
     }
 }
 

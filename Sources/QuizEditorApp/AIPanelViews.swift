@@ -194,13 +194,22 @@ struct AIPanel: View {
     }
 
     private var scopePicker: some View {
-        Picker("AI action scope", selection: $selectedScope) {
-            ForEach(AIPanelScope.allCases) { scope in
-                Text(scope.title).tag(scope)
+        // The label sits above the segments rather than beside them: in a narrow
+        // panel a leading label wraps to three lines and squeezes the control.
+        VStack(alignment: .leading, spacing: 4) {
+            Text("AI action scope")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            Picker("AI action scope", selection: $selectedScope) {
+                ForEach(AIPanelScope.allCases) { scope in
+                    Text(scope.title).tag(scope)
+                }
             }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .accessibilityLabel("AI action scope")
         }
-        .pickerStyle(.segmented)
-        .accessibilityLabel("AI action scope")
     }
 
     @ViewBuilder

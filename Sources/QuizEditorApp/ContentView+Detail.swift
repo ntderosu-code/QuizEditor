@@ -51,21 +51,27 @@ extension ContentView {
                             .frame(maxWidth: .infinity)
                     }
 
+                    // No primaryAction: the menu now offers two different package
+                    // formats, so a click should open the choices rather than
+                    // silently pick QTI.
                     Menu {
-                        Button("Keep Formatting…") {
-                            importPreservesFormatting = true
-                            isQTIImporterPresented = true
+                        Section("QTI Package (.zip)") {
+                            Button("Keep Formatting…") {
+                                importPreservesFormatting = true
+                                isQTIImporterPresented = true
+                            }
+                            Button("Plain Text…") {
+                                importPreservesFormatting = false
+                                isQTIImporterPresented = true
+                            }
                         }
-                        Button("Plain Text…") {
-                            importPreservesFormatting = false
-                            isQTIImporterPresented = true
+                        Button("Common Cartridge (.imscc)…") {
+                            importPreservesFormatting = true
+                            isIMSCCImporterPresented = true
                         }
                     } label: {
-                        Label("Import QTI Zip", systemImage: "doc.zipper")
+                        Label("Import QTI or Common Cartridge", systemImage: "doc.zipper")
                             .frame(maxWidth: .infinity)
-                    } primaryAction: {
-                        importPreservesFormatting = true
-                        isQTIImporterPresented = true
                     }
                 }
                 .frame(width: 240)
