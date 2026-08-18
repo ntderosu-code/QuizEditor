@@ -144,17 +144,14 @@ struct QuestionEditor: View {
                         Text("Reviewing…")
                     }
                 } else {
-                    // An explicit Image+Text (rather than Label) so .foregroundStyle(.white)
-                    // reliably overrides the prominent glass tint; a Label keeps the tint.
-                    HStack(spacing: 6) {
-                        Image(systemName: "sparkles")
-                        Text("Review with AI")
-                    }
+                    Label("Review with AI", systemImage: "sparkles")
                 }
             }
             .disabled(isReviewing)
-            .buttonStyle(.glassProminent)
-            .foregroundStyle(.white)
+            // .borderedProminent, not .glassProminent: the glass material's blur
+            // and specular edge made this button read as out of focus against the
+            // header. It also matches every other prominent button in the app.
+            .buttonStyle(.borderedProminent)
             .fixedSize()
             .help("Ask AI to review this question and offer suggested edits")
 
