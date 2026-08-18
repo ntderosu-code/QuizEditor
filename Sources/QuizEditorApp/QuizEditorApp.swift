@@ -295,11 +295,14 @@ struct ContentView: View {
             )
             .inspectorColumnWidth(min: 280, ideal: 320, max: 440)
         }
-        .toolbar {
+        .toolbar(id: "document") {
             // Add Question and Import live on the sidebar's own toolbar bar
-            // (over the question list). The clusters here are document/AI tools,
-            // each its own Liquid Glass capsule separated by flexible spacers.
-            ToolbarItemGroup {
+            // (over the question list). The clusters here are document/AI tools.
+            // Each item carries an id so the toolbar is user-customizable
+            // (right-click ▸ Customize Toolbar); ToolbarSpacer is not
+            // customizable content, so the flexible spacer that used to
+            // separate the clusters is gone and the placements do the grouping.
+            ToolbarItem(id: "export") {
                 Menu {
                     Section("QTI Package") {
                         ForEach(CanvasQuizEngine.allCases) { engine in
@@ -320,7 +323,9 @@ struct ContentView: View {
                 }
                 .menuIndicator(.hidden)
                 .help("Export as a QTI package (for Canvas and other LMSs), a formatted document, or a printable paper exam")
+            }
 
+            ToolbarItem(id: "preview") {
                 Button {
                     previewScopedToQuestion = false
                     isPreviewPresented = true
@@ -331,16 +336,16 @@ struct ContentView: View {
                 .help("Preview a formatted version of the whole quiz (⇧⌘P)")
             }
 
-            ToolbarSpacer(.flexible)
-
-            ToolbarItemGroup {
+            ToolbarItem(id: "draftWithAI") {
                 Button {
                     isAuthoringPresented = true
                 } label: {
                     Label("Draft with AI", systemImage: "sparkles")
                 }
                 .help("Generate new questions from a topic or learning objective")
+            }
 
+            ToolbarItem(id: "checkQuiz") {
                 Menu {
                     Button(AppCopy.checkQuiz) {
                         isLintSheetPresented = true
@@ -382,7 +387,7 @@ struct ContentView: View {
                 .help("Run offline checks for clarity, answer keys, accessibility, and LMS import readiness")
             }
 
-            ToolbarItem(placement: .primaryAction) {
+            ToolbarItem(id: "aiPanel", placement: .primaryAction) {
                 Button {
                     isAIPanelVisible.toggle()
                 } label: {
