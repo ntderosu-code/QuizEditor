@@ -11,6 +11,7 @@ import ApplicationServices
 // Usage:
 //   uidriver tree [maxDepth]         dump the front window's accessibility tree
 //   uidriver focused                 describe the focused UI element
+//   uidriver move X Y                move the pointer (keeps it out of a shot)
 //   uidriver click X Y               left click at a screen point
 //   uidriver rightclick X Y          right click at a screen point
 //   uidriver drag X1 Y1 X2 Y2        press, creep past the drag threshold, drag
@@ -174,6 +175,10 @@ case "rightclick":
     post(CGEvent(mouseEventSource: nil, mouseType: .rightMouseDown, mouseCursorPosition: p, mouseButton: .right))
     usleep(120_000)
     post(CGEvent(mouseEventSource: nil, mouseType: .rightMouseUp, mouseCursorPosition: p, mouseButton: .right))
+case "move":
+    post(CGEvent(mouseEventSource: nil, mouseType: .mouseMoved,
+                 mouseCursorPosition: CGPoint(x: Double(args[2])!, y: Double(args[3])!),
+                 mouseButton: .left))
 case "click":
     click(Double(args[2])!, Double(args[3])!)
 case "drag":
