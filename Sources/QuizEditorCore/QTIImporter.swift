@@ -21,7 +21,7 @@ public struct QTISection: Equatable, Sendable {
 }
 
 public struct QTIImporter: Sendable {
-    public enum ImportError: Error, Equatable, CustomStringConvertible {
+    public enum ImportError: UserFacingError, Equatable {
         case missingUnzipExecutable
         case unzipFailed(status: Int32)
         case manifestNotFound

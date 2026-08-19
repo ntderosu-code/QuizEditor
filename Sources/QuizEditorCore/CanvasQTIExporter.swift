@@ -37,9 +37,16 @@ public struct QTIPackageFile: Equatable, Sendable {
 }
 
 public struct CanvasQTIExporter: Sendable {
-    public enum ExportError: Error, Equatable {
+    public enum ExportError: UserFacingError, Equatable {
         case emptyQuizTitle
         case noQuestions
+
+        public var description: String {
+            switch self {
+            case .emptyQuizTitle: "The quiz needs a title before it can be exported."
+            case .noQuestions: "The quiz has no questions to export."
+            }
+        }
     }
 
     private let engine: CanvasQuizEngine

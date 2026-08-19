@@ -71,6 +71,7 @@ struct QuickSwitchSheet: View {
                                 .contentShape(.rect)
                             }
                             .buttonStyle(.plain)
+                            .hoverHighlight()
                         }
                     }
                 }

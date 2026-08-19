@@ -70,3 +70,29 @@ struct LabeledTextEditor: View {
         }
     }
 }
+
+/// A hover highlight for rows that are clickable but not drawn as buttons.
+/// `.buttonStyle(.plain)` removes macOS's built-in hover feedback, which leaves
+/// a clickable row looking inert until you click it. The tint is drawn from
+/// `Color.primary`, so it adapts to light and dark automatically, and it is
+/// never the only signal — every row it is applied to also carries its own
+/// label, selection state, and accessibility traits.
+struct HoverHighlight: ViewModifier {
+    var cornerRadius: CGFloat = 6
+    @State private var isHovered = false
+
+    func body(content: Content) -> some View {
+        content
+            .background(
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .fill(Color.primary.opacity(isHovered ? 0.06 : 0))
+            )
+            .onHover { isHovered = $0 }
+    }
+}
+
+extension View {
+    func hoverHighlight(cornerRadius: CGFloat = 6) -> some View {
+        modifier(HoverHighlight(cornerRadius: cornerRadius))
+    }
+}

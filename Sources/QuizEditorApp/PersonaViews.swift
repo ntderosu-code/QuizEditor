@@ -265,6 +265,9 @@ struct PersonaRow: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
+        // Before the opaque row background, not after: .background inserts
+        // behind, so the reverse order buries the highlight.
+        .hoverHighlight(cornerRadius: 10)
         .background(Color(nsColor: .controlBackgroundColor))
         .clipShape(.rect(cornerRadius: 10))
         .overlay(

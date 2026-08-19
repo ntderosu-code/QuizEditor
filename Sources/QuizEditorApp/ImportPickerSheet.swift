@@ -209,6 +209,7 @@ struct ImportPickerSheet: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .hoverHighlight()
         .accessibilityLabel("\(label), \(selected) of \(total) selected")
         .accessibilityHint(selected == total ? "Deselect all questions in this group" : "Select all questions in this group")
     }

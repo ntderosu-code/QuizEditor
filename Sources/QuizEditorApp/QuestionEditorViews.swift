@@ -446,6 +446,37 @@ struct AnswerEditor: View {
             .buttonStyle(.borderless)
             .accessibilityLabel("Remove answer \(letter)")
         }
+        .contextMenu {
+            Button("Mark as Correct") { markOnlyCorrect(answer.wrappedValue.id) }
+                .disabled(answer.wrappedValue.isCorrect)
+            Button("Duplicate Answer") { duplicateAnswer(answer.wrappedValue.id) }
+            Divider()
+            Button("Move Up") { moveAnswer(answer.wrappedValue.id, by: -1) }
+                .disabled(index == 0)
+            Button("Move Down") { moveAnswer(answer.wrappedValue.id, by: 1) }
+                .disabled(index >= question.answers.count - 1)
+            Divider()
+            Button("Delete Answer", role: .destructive) {
+                question.answers.removeAll { $0.id == answer.wrappedValue.id }
+            }
+        }
+    }
+
+    /// Copies an answer directly below the original, unmarked as correct so a
+    /// single-answer question cannot end up with two keys.
+    private func duplicateAnswer(_ answerID: UUID) {
+        guard let index = question.answers.firstIndex(where: { $0.id == answerID }) else { return }
+        var copy = question.answers[index]
+        copy.id = UUID()
+        copy.isCorrect = false
+        question.answers.insert(copy, at: index + 1)
+    }
+
+    private func moveAnswer(_ answerID: UUID, by delta: Int) {
+        guard let index = question.answers.firstIndex(where: { $0.id == answerID }) else { return }
+        let target = index + delta
+        guard question.answers.indices.contains(target) else { return }
+        question.answers.swapAt(index, target)
     }
 
     /// Single-select questions use a radio so only one answer can ever be correct;

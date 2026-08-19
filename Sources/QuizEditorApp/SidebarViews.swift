@@ -21,6 +21,9 @@ struct SidebarView: View {
     let onDelete: (UUID) -> Void
     let onMove: (IndexSet, Int) -> Void
     let onNudge: (UUID, Int) -> Void
+    /// Owned by `ContentView` so Edit ▸ Filter Questions (⌘F) can focus the
+    /// field from the menu bar.
+    var filterFieldFocus: FocusState<Bool>.Binding
 
     @State private var searchText = ""
     @State private var difficultyFilter: QuizDifficulty?
@@ -102,6 +105,9 @@ struct SidebarView: View {
             }
         }
         .listStyle(.sidebar)
+        .onDeleteCommand {
+            if let id = selectedQuestionID { onDelete(id) }
+        }
         .navigationTitle("Quiz")
         .safeAreaInset(edge: .top) { searchBar }
         // The sidebar's own controls sit on the toolbar bar above it (Liquid
@@ -111,12 +117,10 @@ struct SidebarView: View {
                 Button(action: onAddQuestion) {
                     Label("Add Question", systemImage: "plus")
                 }
-                .keyboardShortcut("n", modifiers: [.command, .shift])
                 .help("Add a new question (⇧⌘N)")
 
                 Menu {
                     Button("Marked Text…") { onImportMarkedText() }
-                        .keyboardShortcut("i", modifiers: [.command, .shift])
                     Divider()
                     Section("QTI Package (.zip)") {
                         Button("Keep Formatting…") { onImportQTI(true) }
@@ -130,6 +134,7 @@ struct SidebarView: View {
                     Label("Import", systemImage: "square.and.arrow.down")
                 }
                 .menuIndicator(.hidden)
+                .accessibilityLabel("Import")
                 .help("Import questions from marked text, a QTI .zip, Common Cartridge, another file, or the question bank")
             }
         }
@@ -159,6 +164,8 @@ struct SidebarView: View {
                 TextField("Filter questions", text: $searchText)
                     .textFieldStyle(.plain)
                     .accessibilityLabel("Filter questions")
+                    .focused(filterFieldFocus)
+                    .onExitCommand { searchText = "" }
                 if !searchText.isEmpty {
                     Button { searchText = "" } label: {
                         Image(systemName: "xmark.circle.fill")

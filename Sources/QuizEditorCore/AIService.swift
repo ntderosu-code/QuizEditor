@@ -21,7 +21,7 @@ public enum AIProvider: String, CaseIterable, Identifiable, Sendable {
 }
 
 public struct AIConfiguration: Equatable, Sendable {
-    public enum ValidationError: Error, Equatable, CustomStringConvertible {
+    public enum ValidationError: UserFacingError, Equatable {
         case missingAPIKey
         case missingModel
 
@@ -162,7 +162,7 @@ public struct AIRequestFactory: Sendable {
 }
 
 public struct AIClient: Sendable {
-    public enum ClientError: Error, Equatable, CustomStringConvertible {
+    public enum ClientError: UserFacingError, Equatable {
         case invalidResponse
         case serverError(statusCode: Int)
         case missingContent

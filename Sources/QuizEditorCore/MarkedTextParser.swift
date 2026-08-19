@@ -28,7 +28,7 @@ public struct CorrectAnswerMarker: Equatable, Codable, Sendable {
 }
 
 public struct MarkedTextParser: Sendable {
-    public enum ParseError: Error, Equatable, CustomStringConvertible {
+    public enum ParseError: UserFacingError, Equatable {
         case missingTitle
         case missingPrompt(questionNumber: Int)
         case unsupportedType(String)

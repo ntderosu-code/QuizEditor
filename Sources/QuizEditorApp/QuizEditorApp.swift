@@ -39,6 +39,14 @@ struct QuizDocument: FileDocument {
 
 @main
 struct QuizEditorApp: App {
+    /// Personas and frameworks are app-wide libraries, not per-document data, so
+    /// they are owned once here. Each document window used to build its own
+    /// store, which meant editing a persona in one window left every other
+    /// window showing the stale copy — and the Settings scene, which lives
+    /// outside `DocumentGroup`, could not see them at all.
+    @StateObject private var personaStore = PersonaStore()
+    @StateObject private var frameworkStore = FrameworkStore()
+
     init() {
         // Open straight into a blank untitled document instead of showing the
         // open-file panel on launch.
@@ -51,79 +59,22 @@ struct QuizEditorApp: App {
         DocumentGroup(newDocument: QuizDocument()) { file in
             ContentView(quiz: file.$document.quiz)
                 .frame(minWidth: 760, minHeight: 480)
+                .environmentObject(personaStore)
+                .environmentObject(frameworkStore)
         }
         .windowToolbarStyle(.unified)
         .defaultSize(width: 1200, height: 760)
         .commands {
-            CommandGroup(after: .help) {
-                AcknowledgementsMenuButton()
-            }
+            QuizDocumentCommands()
             QuestionCommands()
         }
 
-        Window("Acknowledgements", id: "acknowledgements") {
-            AcknowledgementsView()
+        Settings {
+            AppSettingsView()
+                .environmentObject(personaStore)
+                .environmentObject(frameworkStore)
         }
-        .windowResizability(.contentSize)
-    }
-}
 
-/// Help-menu entry that opens the Acknowledgements window.
-struct AcknowledgementsMenuButton: View {
-    @Environment(\.openWindow) private var openWindow
-
-    var body: some View {
-        Button("Acknowledgements") {
-            openWindow(id: "acknowledgements")
-        }
-    }
-}
-
-struct AcknowledgementsView: View {
-    private struct Credit: Identifiable {
-        let id = UUID()
-        let name: String
-        let detail: String
-    }
-
-    private let credits: [Credit] = [
-        Credit(name: "SwiftUI, AppKit & WebKit", detail: "Apple's UI frameworks, used under the Apple SDK License."),
-        Credit(name: "SF Symbols", detail: "Icon set © Apple Inc., used under the SF Symbols license."),
-        Credit(name: "IMS QTI 1.2 & 2.1", detail: "Question & Test Interoperability specifications by IMS Global / 1EdTech."),
-        Credit(name: "Learning management systems", detail: "QTI 1.2/2.1 and IMS Common Cartridge interchange with Canvas, Brightspace, Blackboard, Moodle, and other LMSs.")
-    ]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Quiz Editor")
-                    .font(.title2.bold())
-                Text("Released under the MIT License © 2026 Byron R Roush. No third-party open-source libraries are bundled; the app is built entirely on Apple frameworks.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Divider()
-
-            Text("Acknowledgements")
-                .font(.headline)
-
-            ForEach(credits) { credit in
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(credit.name)
-                        .font(.subheadline.weight(.semibold))
-                    Text(credit.detail)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-
-            Spacer(minLength: 0)
-        }
-        .padding(24)
-        .frame(width: 460, height: 380)
     }
 }
 
@@ -161,6 +112,10 @@ struct ContentView: View {
     @State var isMergeImporterPresented = false
     @State var importText = ""
     @State var errorMessage: String?
+    /// Title for the `errorMessage` alert. Nil means the generic failure title;
+    /// a rejected drop sets its own, because "the file type isn't supported" is
+    /// not something going wrong.
+    @State var errorTitle: String?
     @State var exportDocument = QTIArchiveDocument(data: Data())
     @State var isExporterPresented = false
     @State var correctMarkerSymbol = "*"
@@ -181,12 +136,17 @@ struct ContentView: View {
     @State var qtiValidation: QTIValidationContext?
     @State var pendingExportEngine: CanvasQuizEngine?
     @State var isIMSCCImporterPresented = false
-    @StateObject var personaStore = PersonaStore()
+    @EnvironmentObject var personaStore: PersonaStore
     @AppStorage("personaID") var appDefaultPersonaID = Persona.generalID
     @State var isPersonaSheetPresented = false
-    @StateObject var frameworkStore = FrameworkStore()
+    @EnvironmentObject var frameworkStore: FrameworkStore
     @State var isCoverageSheetPresented = false
     @State var isFrameworkSheetPresented = false
+
+    /// Focuses the sidebar's filter field, so Edit ▸ Filter Questions (⌘F) has
+    /// somewhere to land. Declared here rather than in `SidebarView` because the
+    /// menu command reaches the document through this view's focused value.
+    @FocusState var isFilterFieldFocused: Bool
 
     /// Cached quiz-wide lint, recomputed only when the quiz or active persona
     /// changes (not on every render — selection, sheet toggles, etc.).
@@ -236,7 +196,8 @@ struct ContentView: View {
                 onDuplicate: duplicateQuestion(id:),
                 onDelete: deleteQuestion(id:),
                 onMove: moveQuestions(from:to:),
-                onNudge: nudgeQuestion(id:by:)
+                onNudge: nudgeQuestion(id:by:),
+                filterFieldFocus: $isFilterFieldFocused
             )
             .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 320)
         } detail: {
@@ -275,8 +236,17 @@ struct ContentView: View {
         .toolbar {
             // Add Question and Import live on the sidebar's own toolbar bar
             // (over the question list). The clusters here are document/AI tools,
-            // each its own Liquid Glass capsule separated by flexible spacers.
-            ToolbarItemGroup {
+            // and the placements do the grouping.
+            //
+            // Deliberately NOT .toolbar(id:). Giving every document window the
+            // same toolbar identifier makes AppKit re-insert SwiftUI's own
+            // sidebar-toggle item into a toolbar that already has it, and
+            // File ▸ New then dies on "already contains an item with the
+            // identifier com.apple.SwiftUI.navigationSplitView.toggleSidebar".
+            // The identifier also never bought us the customization palette:
+            // right-clicking the toolbar offered only the display-mode items,
+            // with no "Customize Toolbar…" entry.
+            ToolbarItem {
                 Menu {
                     Section("QTI Package") {
                         ForEach(CanvasQuizEngine.allCases) { engine in
@@ -296,36 +266,41 @@ struct ContentView: View {
                     Label("Export", systemImage: "square.and.arrow.up")
                 }
                 .menuIndicator(.hidden)
+                .accessibilityLabel("Export")
                 .help("Export as a QTI package (for Canvas and other LMSs), a formatted document, or a printable paper exam")
+            }
 
+            ToolbarItem {
                 Button {
                     previewScopedToQuestion = false
                     isPreviewPresented = true
                 } label: {
                     Label("Preview", systemImage: "eye")
                 }
-                .keyboardShortcut("p", modifiers: [.command, .shift])
                 .help("Preview a formatted version of the whole quiz (⇧⌘P)")
             }
 
-            ToolbarSpacer(.flexible)
-
-            ToolbarItemGroup {
+            ToolbarItem {
                 Button {
                     isAuthoringPresented = true
                 } label: {
                     Label("Draft with AI", systemImage: "sparkles")
                 }
                 .help("Generate new questions from a topic or learning objective")
+            }
 
+            ToolbarItem {
                 Menu {
                     Button(AppCopy.checkQuiz) {
                         isLintSheetPresented = true
                     }
+                    Button("Competency Coverage…") {
+                        isCoverageSheetPresented = true
+                    }
 
                     Divider()
 
-                    Section("Review Profile") {
+                    Section {
                         Picker("Review Profile", selection: $quiz.personaID) {
                             Text("App Default (\(personaStore.resolve(appDefaultPersonaID).displayName))")
                                 .tag(String?.none)
@@ -343,12 +318,17 @@ struct ContentView: View {
                     } label: {
                         Label("Manage Review Profiles…", systemImage: "slider.horizontal.3")
                     }
-                    .keyboardShortcut("p", modifiers: [.command, .option])
+                    Button {
+                        isFrameworkSheetPresented = true
+                    } label: {
+                        Label("Manage Frameworks…", systemImage: "list.bullet.indent")
+                    }
                 } label: {
                     Label(AppCopy.checkQuiz, systemImage: "checklist")
                 } primaryAction: {
                     isLintSheetPresented = true
                 }
+                .accessibilityLabel(AppCopy.checkQuiz)
                 .help("Run offline checks for clarity, answer keys, accessibility, and LMS import readiness")
             }
 
@@ -358,7 +338,6 @@ struct ContentView: View {
                 } label: {
                     Label(AppCopy.aiSuggestions, systemImage: isAIPanelVisible ? "sidebar.trailing" : "sidebar.right")
                 }
-                .keyboardShortcut("a", modifiers: [.command, .option])
                 .help(isAIPanelVisible ? "Hide the AI Suggestions panel (⌥⌘A)" : "Show the AI Suggestions panel (⌥⌘A)")
             }
         }
@@ -461,10 +440,26 @@ struct ContentView: View {
                 pendingExportEngine = context.engine
             }
         }
-        .focusedValue(\.quizCommandActions, makeCommandActions())
+        // Scene-scoped, not view-scoped: with .focusedValue these go nil the
+        // moment no control in the window holds focus, which is exactly what
+        // ⌘Home/⌘End leave behind when they rebuild the detail view. The whole
+        // Question menu then went dead until the user clicked something.
+        .focusedSceneValue(\.quizCommandActions, makeCommandActions())
+        .focusedSceneValue(\.quizDocumentActions, makeDocumentActions())
+        .dropDestination(for: URL.self) { urls, _ in
+            handleDroppedFiles(urls)
+        }
         .alert(
-            "Something Went Wrong",
-            isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } }),
+            errorTitle ?? "Something Went Wrong",
+            isPresented: Binding(
+                get: { errorMessage != nil },
+                set: {
+                    if !$0 {
+                        errorMessage = nil
+                        errorTitle = nil
+                    }
+                }
+            ),
             presenting: errorMessage
         ) { _ in
             Button("OK", role: .cancel) { }
