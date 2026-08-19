@@ -178,6 +178,25 @@ struct ContentView: View {
         return index + 1
     }
 
+    /// The editing surface: a floating card on a neutral canvas.
+    private var editorCanvas: some View {
+        ZStack {
+            // Neutral canvas behind the floating editor card. It still bleeds
+            // under the Liquid Glass sidebar via backgroundExtensionEffect
+            // (WWDC25 session 356), but carries no accent tint so the central
+            // editing area stays neutral.
+            Color(nsColor: .windowBackgroundColor)
+                .backgroundExtensionEffect()
+
+            // The editor floats as a card on top of the canvas.
+            editorDetail
+                .background(Color(nsColor: .textBackgroundColor))
+                .clipShape(.rect(cornerRadius: 16))
+                .shadow(color: .black.opacity(0.12), radius: 10, y: 2)
+                .padding(16)
+        }
+    }
+
     var body: some View {
         NavigationSplitView {
             SidebarView(
@@ -201,37 +220,36 @@ struct ContentView: View {
             )
             .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 320)
         } detail: {
-            ZStack {
-                // Neutral canvas behind the floating editor card. It still bleeds
-                // under the Liquid Glass sidebar and inspector via
-                // backgroundExtensionEffect (WWDC25 session 356), but carries no
-                // accent tint so the central editing area stays neutral.
-                Color(nsColor: .windowBackgroundColor)
-                    .backgroundExtensionEffect()
+            // The AI panel is a sibling of the editor inside the detail column,
+            // not a SwiftUI `.inspector`. `.inspector` on a NavigationSplitView
+            // put AppKit into a constraint-update loop that killed the window
+            // the moment the sidebar divider was dragged (#97).
+            HSplitView {
+                editorCanvas
+                    .frame(minWidth: 320, maxWidth: .infinity, maxHeight: .infinity)
 
-                // The editor floats as a card on top of the canvas.
-                editorDetail
-                    .background(Color(nsColor: .textBackgroundColor))
-                    .clipShape(.rect(cornerRadius: 16))
-                    .shadow(color: .black.opacity(0.12), radius: 10, y: 2)
-                    .padding(16)
+                if isAIPanelVisible {
+                    AIPanel(
+                        quiz: $quiz,
+                        quizTitle: quiz.title,
+                        selectedQuestion: selectedQuestionBinding,
+                        selectedQuestionNumber: selectedQuestionNumber,
+                        onAuthorWithAI: { isAuthoringPresented = true },
+                        persona: activePersona,
+                        frameworks: frameworkStore.frameworks
+                    )
+                    .frame(minWidth: 280, idealWidth: 320, maxWidth: 440, maxHeight: .infinity)
+                    // `.inspector` supplied this material for free. As an
+                    // ordinary split child the panel would sit on plain white,
+                    // reading as more editor rather than as chrome. The material
+                    // ignores the safe area so it runs up under the toolbar, the
+                    // way the inspector's did; the content stays inset.
+                    .background {
+                        VisualEffectBackground().ignoresSafeArea()
+                    }
+                }
             }
-            // Fill the detail column so the window can grow freely. Without
-            // maxWidth/maxHeight the content reports a fixed ideal size and the
-            // window gets a hard maximum size.
-            .frame(minWidth: 320, maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .inspector(isPresented: $isAIPanelVisible) {
-            AIPanel(
-                quiz: $quiz,
-                quizTitle: quiz.title,
-                selectedQuestion: selectedQuestionBinding,
-                selectedQuestionNumber: selectedQuestionNumber,
-                onAuthorWithAI: { isAuthoringPresented = true },
-                persona: activePersona,
-                frameworks: frameworkStore.frameworks
-            )
-            .inspectorColumnWidth(min: 280, ideal: 320, max: 440)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .toolbar {
             // Add Question and Import live on the sidebar's own toolbar bar
