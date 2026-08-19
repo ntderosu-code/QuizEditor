@@ -134,6 +134,7 @@ struct SidebarView: View {
                     Label("Import", systemImage: "square.and.arrow.down")
                 }
                 .menuIndicator(.hidden)
+                .accessibilityLabel("Import")
                 .help("Import questions from marked text, a QTI .zip, Common Cartridge, another file, or the question bank")
             }
         }

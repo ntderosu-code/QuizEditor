@@ -254,6 +254,7 @@ extension ContentView {
         guard let (kind, url) = urls.lazy.compactMap({ url in
             DroppedImportKind(url: url).map { ($0, url) }
         }).first else {
+            errorTitle = "That File Type Can't Be Imported"
             errorMessage = "Drop a QTI package (.zip), a Common Cartridge (.imscc), or a Quiz Editor document to import questions from it."
             return false
         }

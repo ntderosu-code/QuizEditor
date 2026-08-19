@@ -112,6 +112,10 @@ struct ContentView: View {
     @State var isMergeImporterPresented = false
     @State var importText = ""
     @State var errorMessage: String?
+    /// Title for the `errorMessage` alert. Nil means the generic failure title;
+    /// a rejected drop sets its own, because "the file type isn't supported" is
+    /// not something going wrong.
+    @State var errorTitle: String?
     @State var exportDocument = QTIArchiveDocument(data: Data())
     @State var isExporterPresented = false
     @State var correctMarkerSymbol = "*"
@@ -229,14 +233,20 @@ struct ContentView: View {
             )
             .inspectorColumnWidth(min: 280, ideal: 320, max: 440)
         }
-        .toolbar(id: "document") {
+        .toolbar {
             // Add Question and Import live on the sidebar's own toolbar bar
-            // (over the question list). The clusters here are document/AI tools.
-            // Each item carries an id so the toolbar is user-customizable
-            // (right-click ▸ Customize Toolbar); ToolbarSpacer is not
-            // customizable content, so the flexible spacer that used to
-            // separate the clusters is gone and the placements do the grouping.
-            ToolbarItem(id: "export") {
+            // (over the question list). The clusters here are document/AI tools,
+            // and the placements do the grouping.
+            //
+            // Deliberately NOT .toolbar(id:). Giving every document window the
+            // same toolbar identifier makes AppKit re-insert SwiftUI's own
+            // sidebar-toggle item into a toolbar that already has it, and
+            // File ▸ New then dies on "already contains an item with the
+            // identifier com.apple.SwiftUI.navigationSplitView.toggleSidebar".
+            // The identifier also never bought us the customization palette:
+            // right-clicking the toolbar offered only the display-mode items,
+            // with no "Customize Toolbar…" entry.
+            ToolbarItem {
                 Menu {
                     Section("QTI Package") {
                         ForEach(CanvasQuizEngine.allCases) { engine in
@@ -256,10 +266,11 @@ struct ContentView: View {
                     Label("Export", systemImage: "square.and.arrow.up")
                 }
                 .menuIndicator(.hidden)
+                .accessibilityLabel("Export")
                 .help("Export as a QTI package (for Canvas and other LMSs), a formatted document, or a printable paper exam")
             }
 
-            ToolbarItem(id: "preview") {
+            ToolbarItem {
                 Button {
                     previewScopedToQuestion = false
                     isPreviewPresented = true
@@ -269,7 +280,7 @@ struct ContentView: View {
                 .help("Preview a formatted version of the whole quiz (⇧⌘P)")
             }
 
-            ToolbarItem(id: "draftWithAI") {
+            ToolbarItem {
                 Button {
                     isAuthoringPresented = true
                 } label: {
@@ -278,7 +289,7 @@ struct ContentView: View {
                 .help("Generate new questions from a topic or learning objective")
             }
 
-            ToolbarItem(id: "checkQuiz") {
+            ToolbarItem {
                 Menu {
                     Button(AppCopy.checkQuiz) {
                         isLintSheetPresented = true
@@ -289,7 +300,7 @@ struct ContentView: View {
 
                     Divider()
 
-                    Section("Review Profile") {
+                    Section {
                         Picker("Review Profile", selection: $quiz.personaID) {
                             Text("App Default (\(personaStore.resolve(appDefaultPersonaID).displayName))")
                                 .tag(String?.none)
@@ -317,10 +328,11 @@ struct ContentView: View {
                 } primaryAction: {
                     isLintSheetPresented = true
                 }
+                .accessibilityLabel(AppCopy.checkQuiz)
                 .help("Run offline checks for clarity, answer keys, accessibility, and LMS import readiness")
             }
 
-            ToolbarItem(id: "aiPanel", placement: .primaryAction) {
+            ToolbarItem(placement: .primaryAction) {
                 Button {
                     isAIPanelVisible.toggle()
                 } label: {
@@ -428,14 +440,26 @@ struct ContentView: View {
                 pendingExportEngine = context.engine
             }
         }
-        .focusedValue(\.quizCommandActions, makeCommandActions())
-        .focusedValue(\.quizDocumentActions, makeDocumentActions())
+        // Scene-scoped, not view-scoped: with .focusedValue these go nil the
+        // moment no control in the window holds focus, which is exactly what
+        // ⌘Home/⌘End leave behind when they rebuild the detail view. The whole
+        // Question menu then went dead until the user clicked something.
+        .focusedSceneValue(\.quizCommandActions, makeCommandActions())
+        .focusedSceneValue(\.quizDocumentActions, makeDocumentActions())
         .dropDestination(for: URL.self) { urls, _ in
             handleDroppedFiles(urls)
         }
         .alert(
-            "Something Went Wrong",
-            isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } }),
+            errorTitle ?? "Something Went Wrong",
+            isPresented: Binding(
+                get: { errorMessage != nil },
+                set: {
+                    if !$0 {
+                        errorMessage = nil
+                        errorTitle = nil
+                    }
+                }
+            ),
             presenting: errorMessage
         ) { _ in
             Button("OK", role: .cancel) { }

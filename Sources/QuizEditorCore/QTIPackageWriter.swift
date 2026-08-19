@@ -1,7 +1,7 @@
 import Foundation
 
 public struct QTIPackageWriter: Sendable {
-    public enum WriterError: Error, Equatable, CustomStringConvertible {
+    public enum WriterError: UserFacingError, Equatable {
         case zipCommandFailed(status: Int32)
         case missingZipExecutable
 
