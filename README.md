@@ -6,7 +6,7 @@ A native macOS app for authoring, reviewing, and round-tripping quizzes in open 
 
 > Built entirely on Apple frameworks (SwiftUI, AppKit, WebKit). No third-party dependencies.
 
-![Quiz Editor main window — searchable sidebar with type and difficulty labels; question editor with type, points, and difficulty on one row above the prompt and answers; and the AI Assistant panel with whole-quiz and single-question tools](docs/screenshots/editor.png)
+![Quiz Editor main window: a searchable sidebar listing ten questions with their type, difficulty, and a readiness dot; a question editor showing a Ready badge, the question type, the stem, four answer choices with the correct one selected, and student feedback; and the AI Suggestions panel with whole-quiz tools](docs/screenshots/editor.png)
 
 ## Features
 
@@ -30,13 +30,13 @@ A native macOS app for authoring, reviewing, and round-tripping quizzes in open 
 
 ### AI review with a before/after diff
 
-![AI Review sheet showing a before/after diff with per-field apply](docs/screenshots/ai-review.png)
+![The AI Suggestions sheet reviewing a rough draft question: a critique of the vague stem and its qualifiers, a list of item-writing improvements, and a before and after rewrite of the prompt with an Apply button for each field](docs/screenshots/ai-review.png)
 
 ### Import marked plain text
 
 The import field starts empty with a placeholder and a collapsible **formatting guide** (syntax plus a worked example), so the sample text can never be imported by accident.
 
-![Import Marked Text dialog with a correct-answer marker, an empty field showing a placeholder, and a collapsible formatting guide](docs/screenshots/import.png)
+![The Import Marked Text sheet: a correct-answer marker field, a marker position menu, an empty text area showing a placeholder, and a collapsed formatting guide](docs/screenshots/import-marked-text.png)
 
 ## Keyboard shortcuts
 
