@@ -65,9 +65,6 @@ struct QuizEditorApp: App {
         .windowToolbarStyle(.unified)
         .defaultSize(width: 1200, height: 760)
         .commands {
-            CommandGroup(after: .help) {
-                AcknowledgementsMenuButton()
-            }
             QuizDocumentCommands()
             QuestionCommands()
         }
@@ -78,69 +75,6 @@ struct QuizEditorApp: App {
                 .environmentObject(frameworkStore)
         }
 
-        Window("Acknowledgements", id: "acknowledgements") {
-            AcknowledgementsView()
-        }
-        .windowResizability(.contentSize)
-    }
-}
-
-/// Help-menu entry that opens the Acknowledgements window.
-struct AcknowledgementsMenuButton: View {
-    @Environment(\.openWindow) private var openWindow
-
-    var body: some View {
-        Button("Acknowledgements") {
-            openWindow(id: "acknowledgements")
-        }
-    }
-}
-
-struct AcknowledgementsView: View {
-    private struct Credit: Identifiable {
-        let id = UUID()
-        let name: String
-        let detail: String
-    }
-
-    private let credits: [Credit] = [
-        Credit(name: "SwiftUI, AppKit & WebKit", detail: "Apple's UI frameworks, used under the Apple SDK License."),
-        Credit(name: "SF Symbols", detail: "Icon set © Apple Inc., used under the SF Symbols license."),
-        Credit(name: "IMS QTI 1.2 & 2.1", detail: "Question & Test Interoperability specifications by IMS Global / 1EdTech."),
-        Credit(name: "Learning management systems", detail: "QTI 1.2/2.1 and IMS Common Cartridge interchange with Canvas, Brightspace, Blackboard, Moodle, and other LMSs.")
-    ]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Quiz Editor")
-                    .font(.title2.bold())
-                Text("Released under the MIT License © 2026 Byron R Roush. No third-party open-source libraries are bundled; the app is built entirely on Apple frameworks.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Divider()
-
-            Text("Acknowledgements")
-                .font(.headline)
-
-            ForEach(credits) { credit in
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(credit.name)
-                        .font(.subheadline.weight(.semibold))
-                    Text(credit.detail)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-
-            Spacer(minLength: 0)
-        }
-        .padding(24)
-        .frame(width: 460, height: 380)
     }
 }
 

@@ -70,11 +70,16 @@ extension ContentView {
                             isIMSCCImporterPresented = true
                         }
                     } label: {
-                        Label("Import QTI or Common Cartridge", systemImage: "doc.zipper")
+                        // "Import QTI or Common Cartridge" truncated to
+                        // "Import QTI or Common Cartri…" here: a Menu spends
+                        // part of its width on the disclosure chevron, so it
+                        // fits less text than the plain buttons above it. The
+                        // package formats are named on the menu's own items.
+                        Label("Import a Package", systemImage: "doc.zipper")
                             .frame(maxWidth: .infinity)
                     }
                 }
-                .frame(width: 240)
+                .frame(width: 260)
             }
         }
     }
