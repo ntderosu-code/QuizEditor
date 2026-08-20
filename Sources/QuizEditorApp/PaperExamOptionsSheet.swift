@@ -51,12 +51,11 @@ struct PaperExamOptionsSheet: View {
                 ExamSelectionSection(
                     totalQuestions: totalQuestions,
                     shuffleQuestions: $shuffleQuestions,
-                    questionCount: $questionCount
+                    questionCount: $questionCount,
+                    versionLabel: $versionLabel
                 )
 
                 Section("Layout") {
-                    TextField("Version or seat label (optional)", text: $versionLabel)
-                        .accessibilityLabel("Version or seat label")
                     Toggle("Show point values", isOn: $showPoints)
                     Toggle("Instructor answer key (shows correct answers and feedback)", isOn: $includeAnswerKey)
                 }

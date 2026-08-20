@@ -38,13 +38,9 @@ struct FormattedDocumentOptionsSheet: View {
                 ExamSelectionSection(
                     totalQuestions: totalQuestions,
                     shuffleQuestions: $shuffleQuestions,
-                    questionCount: $questionCount
+                    questionCount: $questionCount,
+                    versionLabel: $versionLabel
                 )
-
-                Section("Version") {
-                    TextField("Version or seat label (optional)", text: $versionLabel)
-                        .accessibilityLabel("Version or seat label")
-                }
             }
             .formStyle(.grouped)
 
@@ -63,6 +59,6 @@ struct FormattedDocumentOptionsSheet: View {
             }
             .padding(20)
         }
-        .frame(width: 540, height: 420)
+        .frame(width: 540, height: 380)
     }
 }
