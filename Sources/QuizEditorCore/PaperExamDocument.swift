@@ -11,17 +11,36 @@ public struct PaperExamOptions: Sendable, Equatable {
     public var versionLabel: String
     /// Show per-question point values and the total in the score field.
     public var showPoints: Bool
+    /// Shuffle the question order before selecting.
+    public var shuffleQuestions: Bool
+    /// How many questions to print. `nil` prints every question.
+    public var questionCount: Int?
 
     public init(
         instructions: String = "",
         includeAnswerKey: Bool = false,
         versionLabel: String = "",
-        showPoints: Bool = true
+        showPoints: Bool = true,
+        shuffleQuestions: Bool = false,
+        questionCount: Int? = nil
     ) {
         self.instructions = instructions
         self.includeAnswerKey = includeAnswerKey
         self.versionLabel = versionLabel
         self.showPoints = showPoints
+        self.shuffleQuestions = shuffleQuestions
+        self.questionCount = questionCount
+    }
+
+    /// The version label doubles as the shuffle seed: "Version A" and
+    /// "Version B" scramble differently, and re-entering a label reproduces
+    /// that exam so the answer key matches the copy the students hold.
+    public var selection: ExamSelection {
+        ExamSelection(
+            shuffleQuestions: shuffleQuestions,
+            questionCount: questionCount,
+            seedLabel: versionLabel
+        )
     }
 }
 
@@ -34,7 +53,10 @@ public struct PaperExamBuilder: Sendable {
 
     public init() {}
 
-    public func document(for quiz: Quiz, options: PaperExamOptions = PaperExamOptions()) -> String {
+    public func document(for sourceQuiz: Quiz, options: PaperExamOptions = PaperExamOptions()) -> String {
+        // Select and order first, so the header's score total and every question
+        // number below describe the exam actually being printed.
+        let quiz = ExamAssembler.assemble(sourceQuiz, selection: options.selection)
         let title = quiz.title.isEmpty ? "Untitled Quiz" : quiz.title
         let questionsHTML = quiz.questions.enumerated()
             .map { questionBlock(number: $0.offset + 1, question: $0.element, options: options) }
