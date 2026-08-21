@@ -409,8 +409,8 @@ struct ContentView: View {
             QuickSwitchSheet(quiz: quiz) { id in selectedQuestionID = id }
         }
         .sheet(isPresented: $isFormattedDocumentPresented) {
-            FormattedDocumentOptionsSheet(totalQuestions: quiz.questions.count) { selection in
-                exportFormattedDocument(selection)
+            FormattedDocumentOptionsSheet(totalQuestions: quiz.questions.count) { options in
+                exportFormattedDocument(options)
             }
         }
         .sheet(isPresented: $isPaperExamPresented) {

@@ -5,24 +5,29 @@ import QuizEditorCore
 /// hands them back so the caller can render and save the file.
 struct FormattedDocumentOptionsSheet: View {
     let totalQuestions: Int
-    let onExport: (ExamSelection) -> Void
+    let onExport: (FormattedDocumentOptions) -> Void
     @Environment(\.dismiss) private var dismiss
 
     @State private var shuffleQuestions = false
     @State private var questionCount: Int
     @State private var versionLabel = ""
 
-    init(totalQuestions: Int, onExport: @escaping (ExamSelection) -> Void) {
+    @State private var includeAnswers = true
+
+    init(totalQuestions: Int, onExport: @escaping (FormattedDocumentOptions) -> Void) {
         self.totalQuestions = totalQuestions
         self.onExport = onExport
         _questionCount = State(initialValue: max(totalQuestions, 1))
     }
 
-    private var selection: ExamSelection {
-        ExamSelection(
-            shuffleQuestions: shuffleQuestions,
-            questionCount: questionCount,
-            seedLabel: versionLabel
+    private var options: FormattedDocumentOptions {
+        FormattedDocumentOptions(
+            includeAnswers: includeAnswers,
+            selection: ExamSelection(
+                shuffleQuestions: shuffleQuestions,
+                questionCount: questionCount,
+                seedLabel: versionLabel
+            )
         )
     }
 
@@ -48,18 +53,27 @@ struct FormattedDocumentOptionsSheet: View {
                     questionCount: $questionCount,
                     versionLabel: $versionLabel
                 )
+
+                Section("Answers") {
+                    Toggle("Include correct answers and feedback", isOn: $includeAnswers)
+                }
             }
             .formStyle(.grouped)
 
             Divider()
 
             sheetFooter(confirmTitle: "Export…") {
-                Label("Includes the correct answers and feedback.", systemImage: "key.fill")
+                Label(
+                    includeAnswers
+                        ? "Exports the instructor copy, with the answers."
+                        : "Exports a student copy, with no answers.",
+                    systemImage: includeAnswers ? "key.fill" : "doc.text"
+                )
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             } onConfirm: {
-                onExport(selection)
+                onExport(options)
                 dismiss()
             } onCancel: { dismiss() }
         }

@@ -480,13 +480,14 @@ extension ContentView {
         }
     }
 
-    func exportFormattedDocument(_ selection: ExamSelection) {
+    func exportFormattedDocument(_ options: FormattedDocumentOptions) {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.html]
-        panel.nameFieldStringValue = (defaultExportFilename as NSString).deletingPathExtension + ".html"
+        let base = (defaultExportFilename as NSString).deletingPathExtension
+        panel.nameFieldStringValue = base + (options.includeAnswers ? ".html" : "-student.html")
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
-            let document = FormattedDocumentBuilder().document(for: quiz, selection: selection)
+            let document = FormattedDocumentBuilder().document(for: quiz, options: options)
             try document.write(to: url, atomically: true, encoding: .utf8)
         } catch {
             errorMessage = "Document export failed: \(error.localizedDescription)"
