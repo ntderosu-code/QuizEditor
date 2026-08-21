@@ -9,7 +9,16 @@ public struct FormattedDocumentBuilder: Sendable {
     public init() {}
 
     /// A complete standalone HTML document for the whole quiz.
-    public func document(for quiz: Quiz, showAnswerKey: Bool = true) -> String {
+    ///
+    /// `selection` optionally narrows and reorders the questions; the default
+    /// includes every question in authored order, which is what the in-app
+    /// preview uses.
+    public func document(
+        for sourceQuiz: Quiz,
+        showAnswerKey: Bool = true,
+        selection: ExamSelection = ExamSelection()
+    ) -> String {
+        let quiz = ExamAssembler.assemble(sourceQuiz, selection: selection)
         let questions = quiz.questions.enumerated()
             .map { questionSection(number: $0.offset + 1, question: $0.element, showAnswerKey: showAnswerKey) }
             .joined(separator: "\n")

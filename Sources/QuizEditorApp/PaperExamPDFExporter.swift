@@ -102,8 +102,17 @@ final class PaperExamPDFExporter: NSObject, WKNavigationDelegate {
         )
     }
 
-    @objc private func printOperationDidRun(_ printOperation: NSPrintOperation, success: Bool, contextInfo: UnsafeMutableRawPointer?) {
-        finish(with: success ? nil : ExportError.printFailed)
+    // AppKit calls this from the thread running the modal print operation, not
+    // the main thread. The class is main-actor isolated (WKNavigationDelegate is
+    // @MainActor in the SDK, which infers isolation for the whole type), so
+    // without `nonisolated` Swift's executor check traps here and kills the app
+    // moments after the PDF is written. Hop to the main actor explicitly.
+    @objc private nonisolated func printOperationDidRun(_ printOperation: NSPrintOperation, success: Bool, contextInfo: UnsafeMutableRawPointer?) {
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                self.finish(with: success ? nil : ExportError.printFailed)
+            }
+        }
     }
 
     private func finish(with error: Error?) {

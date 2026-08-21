@@ -128,6 +128,7 @@ struct ContentView: View {
     @State var previewScopedToQuestion = false
     @State var isQuickSwitchPresented = false
     @State var isPaperExamPresented = false
+    @State var isFormattedDocumentPresented = false
     @State var isBankPresented = false
     @State var isAuthoringPresented = false
     @State var isLintSheetPresented = false
@@ -275,7 +276,7 @@ struct ContentView: View {
                     }
                     Divider()
                     Button("Formatted Document (HTML)…") {
-                        exportFormattedDocument()
+                        isFormattedDocumentPresented = true
                     }
                     Button("Paper Exam…") {
                         isPaperExamPresented = true
@@ -401,8 +402,13 @@ struct ContentView: View {
         .sheet(isPresented: $isQuickSwitchPresented) {
             QuickSwitchSheet(quiz: quiz) { id in selectedQuestionID = id }
         }
+        .sheet(isPresented: $isFormattedDocumentPresented) {
+            FormattedDocumentOptionsSheet(totalQuestions: quiz.questions.count) { selection in
+                exportFormattedDocument(selection)
+            }
+        }
         .sheet(isPresented: $isPaperExamPresented) {
-            PaperExamOptionsSheet { options in exportPaperExam(options) }
+            PaperExamOptionsSheet(totalQuestions: quiz.questions.count) { options in exportPaperExam(options) }
         }
         .sheet(isPresented: $isBankPresented) {
             QuestionBankSheet { questions in addQuestions(questions, actionName: "Add from Bank") }

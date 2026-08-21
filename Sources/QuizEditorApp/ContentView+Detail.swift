@@ -222,7 +222,7 @@ extension ContentView {
             isAIPanelVisible: isAIPanelVisible,
             hasQuestions: !quiz.questions.isEmpty,
             exportQTIPackage: { engine in prepareExport(engine: engine) },
-            exportFormattedDocument: exportFormattedDocument,
+            exportFormattedDocument: { isFormattedDocumentPresented = true },
             exportPaperExam: { isPaperExamPresented = true },
             importMarkedText: { isImporterPresented = true },
             importQTIPackage: { keepFormatting in
@@ -477,13 +477,13 @@ extension ContentView {
         }
     }
 
-    func exportFormattedDocument() {
+    func exportFormattedDocument(_ selection: ExamSelection) {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.html]
         panel.nameFieldStringValue = (defaultExportFilename as NSString).deletingPathExtension + ".html"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
-            let document = FormattedDocumentBuilder().document(for: quiz)
+            let document = FormattedDocumentBuilder().document(for: quiz, selection: selection)
             try document.write(to: url, atomically: true, encoding: .utf8)
         } catch {
             errorMessage = "Document export failed: \(error.localizedDescription)"

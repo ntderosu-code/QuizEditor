@@ -4,6 +4,7 @@ import QuizEditorCore
 /// Collects options for a printable paper exam, then hands them back so the
 /// caller can render and save the PDF.
 struct PaperExamOptionsSheet: View {
+    let totalQuestions: Int
     let onExport: (PaperExamOptions) -> Void
     @Environment(\.dismiss) private var dismiss
 
@@ -11,13 +12,23 @@ struct PaperExamOptionsSheet: View {
     @State private var versionLabel = ""
     @State private var showPoints = true
     @State private var includeAnswerKey = false
+    @State private var shuffleQuestions = false
+    @State private var questionCount: Int
+
+    init(totalQuestions: Int, onExport: @escaping (PaperExamOptions) -> Void) {
+        self.totalQuestions = totalQuestions
+        self.onExport = onExport
+        _questionCount = State(initialValue: max(totalQuestions, 1))
+    }
 
     private var options: PaperExamOptions {
         PaperExamOptions(
             instructions: instructions,
             includeAnswerKey: includeAnswerKey,
             versionLabel: versionLabel,
-            showPoints: showPoints
+            showPoints: showPoints,
+            shuffleQuestions: shuffleQuestions,
+            questionCount: questionCount
         )
     }
 
@@ -37,9 +48,14 @@ struct PaperExamOptionsSheet: View {
                         .accessibilityLabel("Exam instructions")
                 }
 
+                ExamSelectionSection(
+                    totalQuestions: totalQuestions,
+                    shuffleQuestions: $shuffleQuestions,
+                    questionCount: $questionCount,
+                    versionLabel: $versionLabel
+                )
+
                 Section("Layout") {
-                    TextField("Version or seat label (optional)", text: $versionLabel)
-                        .accessibilityLabel("Version or seat label")
                     Toggle("Show point values", isOn: $showPoints)
                     Toggle("Instructor answer key (shows correct answers and feedback)", isOn: $includeAnswerKey)
                 }
@@ -67,6 +83,6 @@ struct PaperExamOptionsSheet: View {
             }
             .padding(20)
         }
-        .frame(width: 540, height: 480)
+        .frame(width: 540, height: 620)
     }
 }
