@@ -74,7 +74,7 @@ struct PaperExamOptionsSheet: View {
 
                 Section("Layout") {
                     Toggle("Show point values", isOn: $showPoints)
-                    Toggle("Instructor answer key (shows correct answers and feedback)", isOn: $includeAnswerKey)
+                    Toggle("Include correct answers and feedback", isOn: $includeAnswerKey)
                 }
             }
             .formStyle(.grouped)

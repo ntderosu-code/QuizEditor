@@ -73,7 +73,6 @@ struct GeneralSettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(minHeight: 220)
     }
 }
 
@@ -124,6 +123,5 @@ struct AISettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(minHeight: 300)
     }
 }

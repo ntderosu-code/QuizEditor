@@ -355,7 +355,7 @@ public extension Persona {
         displayName: "General",
         family: "general",
         version: 1,
-        summary: "QuizEditor's standard item-writing guidance. A good fit for any subject, and the starting point for every discipline persona.",
+        summary: "Quiz Editor's standard item-writing guidance. A good fit for any subject, and the starting point for every discipline persona.",
         isBuiltIn: true
     )
 }
