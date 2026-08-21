@@ -26,7 +26,7 @@ struct PersonaEditorSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            sheetHeader("Edit Persona", systemImage: "person.crop.rectangle.badge.plus")
+            sheetHeader("Edit Review Profile", systemImage: "person.crop.rectangle.badge.plus")
             Divider()
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
@@ -68,10 +68,10 @@ struct PersonaEditorSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             sectionTitle("Identity")
             LabeledField("Name") {
-                TextField("Persona name", text: $draft.displayName)
+                TextField("Review profile name", text: $draft.displayName)
                     .textFieldStyle(.roundedBorder)
             }
-            LabeledTextEditor(title: "Summary", text: $draft.summary, minHeight: 60, placeholder: "What this persona is for.")
+            LabeledTextEditor(title: "Summary", text: $draft.summary, minHeight: 60, placeholder: "What this review profile is for.")
             LabeledField("Family") {
                 Picker("Family", selection: $draft.family) {
                     ForEach(personaFamilies, id: \.self) { family in

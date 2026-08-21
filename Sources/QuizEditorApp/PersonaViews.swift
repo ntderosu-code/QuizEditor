@@ -44,7 +44,7 @@ struct PersonaManagementSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Label("Personas", systemImage: "person.crop.rectangle.stack")
+                Label("Review Profiles", systemImage: "person.crop.rectangle.stack")
                     .font(.title2.bold())
                 Spacer()
                 Button {
@@ -57,8 +57,6 @@ struct PersonaManagementSheet: View {
                 } label: {
                     Label("New", systemImage: "plus")
                 }
-                Button("Done") { dismiss() }
-                    .keyboardShortcut(.defaultAction)
             }
             .padding(20)
 
@@ -66,7 +64,7 @@ struct PersonaManagementSheet: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    Text("A persona bakes a discipline's quiz-writing best practices into the editor. Choosing one is reversible and never changes the questions you've written.")
+                    Text("A review profile bakes a discipline's quiz-writing best practices into the editor. Choosing one is reversible and never changes the questions you've written.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -82,7 +80,7 @@ struct PersonaManagementSheet: View {
                     }
 
                     LabeledField("This quiz") {
-                        Picker("This quiz's persona", selection: $quizPersonaID) {
+                        Picker("This quiz's review profile", selection: $quizPersonaID) {
                             Text("Use default (\(defaultDisplayName))").tag(String?.none)
                             ForEach(personas) { persona in
                                 Text(persona.displayName).tag(Optional(persona.id))
@@ -101,7 +99,7 @@ struct PersonaManagementSheet: View {
 
                     Divider()
 
-                    Text("Available personas")
+                    Text("Available review profiles")
                         .font(.subheadline.weight(.semibold))
                     VStack(spacing: 10) {
                         ForEach(personas) { persona in
@@ -117,7 +115,7 @@ struct PersonaManagementSheet: View {
                         }
                     }
 
-                    Text("Built-in personas are read-only — duplicate one to make your own. User personas live locally in Application Support/QuizEditor/Personas and never touch the network.")
+                    Text("Built-in review profiles are read-only. Duplicate one to make your own. Profiles you create live locally in Application Support/QuizEditor/Personas and never touch the network.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -125,6 +123,16 @@ struct PersonaManagementSheet: View {
                 .padding(20)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+
+            Divider()
+
+            HStack {
+                Spacer()
+                Button("Done") { dismiss() }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+            }
+            .padding(20)
         }
         .frame(minWidth: 520, minHeight: 560)
         .onAppear(perform: sanitizeStalePersonaIDs)
@@ -143,7 +151,7 @@ struct PersonaManagementSheet: View {
     /// the default later changes).
     private func select(_ persona: Persona) {
         quizPersonaID = persona.id
-        notice = "\u{201C}\(persona.displayName)\u{201D} is now this quiz's persona."
+        notice = "\u{201C}\(persona.displayName)\u{201D} is now this quiz's review profile."
     }
 
     /// A saved default or quiz override may name a persona that no longer exists
@@ -159,7 +167,7 @@ struct PersonaManagementSheet: View {
     }
 
     private func newPersona() -> Persona {
-        Persona(id: "user.\(UUID().uuidString.lowercased())", displayName: "New Persona", isBuiltIn: false)
+        Persona(id: "user.\(UUID().uuidString.lowercased())", displayName: "New Review Profile", isBuiltIn: false)
     }
 
     private func delete(_ persona: Persona) {
@@ -202,7 +210,7 @@ struct PersonaManagementSheet: View {
             let warning = result.warnings.isEmpty ? "" : " " + result.warnings.joined(separator: " ")
             notice = "Imported “\(persona.displayName).”" + warning
         } catch {
-            notice = "Couldn't import that file — it isn't a valid persona."
+            notice = "Couldn't import that file. It isn't a valid review profile."
         }
     }
 }
@@ -259,7 +267,7 @@ struct PersonaRow: View {
             .buttonStyle(.plain)
             .help("Use \u{201C}\(persona.displayName)\u{201D} for this quiz")
             .accessibilityLabel("\(persona.displayName), \(personaFamilyName(persona.family))\(persona.summary.isEmpty ? "" : ". \(persona.summary)")")
-            .accessibilityHint("Makes this persona active for this quiz")
+            .accessibilityHint("Makes this review profile active for this quiz")
             .accessibilityAddTraits(isActive ? [.isSelected] : [])
             actionsMenu
         }

@@ -279,7 +279,7 @@ struct AIPanel: View {
 
     private var pasteResponseButton: some View {
         Button("Paste Response", action: pasteAIResponse)
-            .buttonStyle(.glass)
+            .buttonStyle(.bordered)
             .disabled(isRunning)
             .help("Paste a response copied from another assistant")
     }
@@ -320,13 +320,14 @@ struct AIPanel: View {
         }
         .disabled(disabled || (disabledWhenRunning && isRunning))
 
+        // Bordered, not glass: the panel already sits on the sidebar material,
+        // and stacking glass on glass is the one thing Liquid Glass rules out
+        // flatly. It also matches the editor's own buttons, which chose bordered
+        // for the same legibility reason.
         if prominent {
-            // A prominent glass button fills with the accent tint, so its label
-            // must be white for contrast; without this the text inherits the tint.
-            button.buttonStyle(.glassProminent)
-                .foregroundStyle(.white)
+            button.buttonStyle(.borderedProminent)
         } else {
-            button.buttonStyle(.glass)
+            button.buttonStyle(.bordered)
         }
     }
 

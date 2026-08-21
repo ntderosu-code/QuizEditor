@@ -607,6 +607,8 @@ struct MarkedTextFormatReference: View {
         } label: {
             Label("Formatting guide", systemImage: "text.book.closed")
                 .font(.subheadline.weight(.semibold))
+                .contentShape(.rect)
+                .onTapGesture { isExpanded.toggle() }
         }
     }
 
@@ -646,14 +648,7 @@ struct QuizPreviewSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Text("Preview")
-                    .font(.title2.bold())
-                Spacer()
-                Button("Done") { dismiss() }
-                    .keyboardShortcut(.defaultAction)
-            }
-            .padding(20)
+            sheetHeader("Preview", systemImage: "eye")
 
             Divider()
 
@@ -669,7 +664,7 @@ struct QuizPreviewSheet: View {
 
                 Spacer()
 
-                Toggle("Show answer key", isOn: $showAnswerKey)
+                Toggle("Show correct answers and feedback", isOn: $showAnswerKey)
                     .toggleStyle(.switch)
             }
             .padding(.horizontal, 20)
@@ -678,6 +673,16 @@ struct QuizPreviewSheet: View {
             Divider()
 
             FullHTMLPreview(html: html)
+
+            Divider()
+
+            HStack {
+                Spacer()
+                Button("Done") { dismiss() }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+            }
+            .padding(20)
         }
         .frame(minWidth: 720, minHeight: 640)
         .onAppear {
