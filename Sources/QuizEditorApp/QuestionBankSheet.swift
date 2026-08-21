@@ -40,14 +40,11 @@ struct QuestionBankSheet: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Label("Question Bank", systemImage: "books.vertical")
-                .font(.title2.bold())
-            Text(folderName.map { "Indexed folder: \($0)" } ?? "Choose a folder of .quizeditor files to browse questions across all of them.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-        }
-        .padding(20)
+        sheetHeader(
+            "Question Bank",
+            systemImage: "books.vertical",
+            subtitle: folderName.map { "Indexed folder: \($0)" } ?? "Choose a folder of .quizeditor files to browse questions across all of them."
+        )
     }
 
     private var controls: some View {

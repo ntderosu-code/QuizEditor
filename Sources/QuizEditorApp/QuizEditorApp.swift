@@ -512,7 +512,7 @@ struct ImportSheet: View {
         // guide grows the body instead of pushing the Import button off the sheet.
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 8) {
-                Text("Import Marked Text")
+                Label("Import Marked Text", systemImage: "text.badge.plus")
                     .font(.title2.bold())
                 Text("Choose the correct-answer marker used in the text. Distractors can still start with `-`; matching pairs use `Term => Match`.")
                     .foregroundStyle(.secondary)

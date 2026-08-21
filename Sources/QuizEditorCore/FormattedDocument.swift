@@ -117,7 +117,7 @@ public struct FormattedDocumentBuilder: Sendable {
           .question { margin: 0 0 1.75rem; padding-bottom: 1.25rem; border-bottom: 1px solid color-mix(in srgb, canvastext 15%, transparent); }
           .qhead { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
           .qnum { font-weight: 700; font-size: 1.1rem; }
-          .qtype { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; color: color-mix(in srgb, canvastext 55%, transparent); }
+          .qtype { font-size: 0.8rem; letter-spacing: 0.01em; color: color-mix(in srgb, canvastext 55%, transparent); }
           .prompt { margin-bottom: 10px; }
           ol.choices { list-style: none; padding-left: 0; margin: 8px 0; }
           ol.choices li { padding: 3px 0; }

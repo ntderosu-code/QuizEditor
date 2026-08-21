@@ -101,14 +101,7 @@ struct ImportPickerSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.title2.bold())
-                Text(sourceDescription)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            }
-            .padding(20)
+            sheetHeader(title, systemImage: "square.and.arrow.down", subtitle: sourceDescription)
 
             Divider()
 
