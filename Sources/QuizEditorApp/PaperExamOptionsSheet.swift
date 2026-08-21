@@ -32,11 +32,22 @@ struct PaperExamOptionsSheet: View {
         )
     }
 
+    /// Describes what the Export button is actually about to produce. It has to
+    /// name the selection too: "the blank student copy" reads as the whole quiz
+    /// in authored order, which stops being true as soon as a subset or a
+    /// shuffle is chosen.
+    private var exportSummary: String {
+        var summary = includeAnswerKey ? "Exports the instructor answer key" : "Exports the blank student copy"
+        if questionCount < totalQuestions {
+            summary += ", \(questionCount) of \(totalQuestions) questions"
+        }
+        summary += shuffleQuestions ? ", in random order." : "."
+        return summary
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Export Paper Exam")
-                .font(.title2.bold())
-                .padding(20)
+            sheetHeader("Export Paper Exam", systemImage: "doc.text")
 
             Divider()
 
@@ -50,6 +61,12 @@ struct PaperExamOptionsSheet: View {
 
                 ExamSelectionSection(
                     totalQuestions: totalQuestions,
+                    seedNote: """
+                    The version label seeds the shuffle: the same label always \
+                    produces the same exam, so an answer key exported later \
+                    matches the copy students received. A different label \
+                    produces a different exam.
+                    """,
                     shuffleQuestions: $shuffleQuestions,
                     questionCount: $questionCount,
                     versionLabel: $versionLabel
@@ -64,25 +81,19 @@ struct PaperExamOptionsSheet: View {
 
             Divider()
 
-            HStack {
-                Label(
-                    includeAnswerKey ? "Exports the instructor answer key." : "Exports the blank student copy.",
-                    systemImage: includeAnswerKey ? "key.fill" : "doc.text"
-                )
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                Spacer()
-                Button("Cancel") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                Button("Export…") {
-                    onExport(options)
-                    dismiss()
-                }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.defaultAction)
-            }
-            .padding(20)
+            sheetFooter(confirmTitle: "Export…") {
+                Label(exportSummary, systemImage: includeAnswerKey ? "key.fill" : "doc.text")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } onConfirm: {
+                onExport(options)
+                dismiss()
+            } onCancel: { dismiss() }
         }
-        .frame(width: 540, height: 620)
+        // A minimum, not a fixed size, so the sheet grows with its content the
+        // way every other sheet here does: the seeding explanation appears when
+        // randomizing is switched on, and a fixed height clipped the row below it.
+        .frame(minWidth: 540, minHeight: 620)
     }
 }

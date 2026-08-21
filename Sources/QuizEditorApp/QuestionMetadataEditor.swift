@@ -22,9 +22,13 @@ struct QuestionTypeEditor: View {
 /// difficulty, and tags do not compete with the authoring path.
 struct QuestionDetailsEditor: View {
     @Binding var question: QuizQuestion
+    /// Owned here so the label can toggle it. A DisclosureGroup built from a
+    /// plain string only responds to its chevron, which is an 8pt target and
+    /// unlike every other disclosure on the system.
+    @State private var isExpanded = false
 
     var body: some View {
-        DisclosureGroup("Question details") {
+        DisclosureGroup(isExpanded: $isExpanded) {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(alignment: .top, spacing: 20) {
                     LabeledField("Points") {
@@ -50,6 +54,10 @@ struct QuestionDetailsEditor: View {
                 QuestionTagsEditor(question: $question)
             }
             .padding(.top, 8)
+        } label: {
+            Text("Question details")
+                .contentShape(.rect)
+                .onTapGesture { isExpanded.toggle() }
         }
     }
 }

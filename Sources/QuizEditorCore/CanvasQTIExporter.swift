@@ -378,6 +378,25 @@ public struct CanvasQTIExporter: Sendable {
             return "    <responseDeclaration identifier=\"RESPONSE\" cardinality=\"single\" baseType=\"float\">\(correct)</responseDeclaration>"
         case .essay:
             return "    <responseDeclaration identifier=\"RESPONSE\" cardinality=\"single\" baseType=\"string\"/>"
+        case .fillInBlank, .shortAnswer:
+            // Graded against what the student types. correctResponse carries the
+            // first accepted answer (cardinality is single); the mapping is what
+            // credits the alternative spellings.
+            let accepted = acceptedAnswers(for: question)
+            guard let first = accepted.first else {
+                return "    <responseDeclaration identifier=\"RESPONSE\" cardinality=\"single\" baseType=\"string\"/>"
+            }
+            let entries = accepted.map {
+                "            <mapEntry mapKey=\"\(xmlEscape($0))\" mappedValue=\"1\" caseSensitive=\"false\"/>"
+            }.joined(separator: "\n")
+            return """
+                <responseDeclaration identifier="RESPONSE" cardinality="single" baseType="string">
+                    <correctResponse><value>\(xmlEscape(first))</value></correctResponse>
+                    <mapping defaultValue="0">
+            \(entries)
+                    </mapping>
+                </responseDeclaration>
+            """
         case .matching:
             let values = question.matches.indices.map { "            <value>source_\($0 + 1) target_\($0 + 1)</value>" }.joined(separator: "\n")
             return """
@@ -490,6 +509,36 @@ public struct CanvasQTIExporter: Sendable {
     /// Numeric grading as QTI 1.2 response conditions Canvas understands: a single
     /// exact value uses `varequal`; a value±margin or a range uses an inclusive
     /// `vargte`/`varlte` pair. An unconfigured question emits no scoring condition.
+    /// A typed answer is compared to the accepted text, not to a choice
+    /// identifier, and every answer row counts: these types have no notion of a
+    /// wrong row to leave unchecked.
+    private func classicTextEntryResponseProcessing(_ question: QuizQuestion) -> String {
+        let conditions = acceptedAnswers(for: question).map { answer in
+            """
+                    <respcondition title="correct" continue="No">
+                        <conditionvar><varequal respident="response1">\(xmlEscape(answer))</varequal></conditionvar>
+                        <setvar action="Set" varname="SCORE">100</setvar>
+                    </respcondition>
+            """
+        }.joined(separator: "\n")
+
+        return """
+            <resprocessing>
+                <outcomes><decvar maxvalue="100" minvalue="0" varname="SCORE" vartype="Decimal"/></outcomes>
+        \(conditions)
+            </resprocessing>
+        """
+    }
+
+    /// Every non-empty answer row, in author order. `isCorrect` is meaningless
+    /// for a typed answer, and filtering on it silently dropped alternative
+    /// spellings from the key.
+    private func acceptedAnswers(for question: QuizQuestion) -> [String] {
+        question.answers
+            .map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
     private func classicNumericResponseProcessing(_ question: QuizQuestion) -> String {
         var condition = ""
         if let numeric = question.numeric {
@@ -533,6 +582,9 @@ public struct CanvasQTIExporter: Sendable {
     }
 
     private func classicAnswerResponseProcessing(_ question: QuizQuestion) -> String {
+        if question.type == .fillInBlank || question.type == .shortAnswer {
+            return classicTextEntryResponseProcessing(question)
+        }
         let correctConditions = question.answers.enumerated().filter { $0.element.isCorrect }.map { index, _ in
             """
                     <respcondition title="correct" continue="Yes">

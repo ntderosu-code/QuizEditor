@@ -9,6 +9,9 @@ import QuizEditorCore
 /// field it describes.
 struct ExamSelectionSection: View {
     let totalQuestions: Int
+    /// What reproducing this exact export buys the author. The paper exam has a
+    /// separate answer-key copy to match; the formatted document does not.
+    let seedNote: String
     @Binding var shuffleQuestions: Bool
     @Binding var questionCount: Int
     @Binding var versionLabel: String
@@ -17,19 +20,39 @@ struct ExamSelectionSection: View {
         "\(questionCount) of \(totalQuestions) question\(totalQuestions == 1 ? "" : "s")"
     }
 
+    private var countRange: ClosedRange<Int> { 1...max(totalQuestions, 1) }
+
+    /// Typing is the point: a stepper alone takes one click per question, so
+    /// drawing 20 from a bank of 100 meant eighty clicks.
+    private func clampCount() {
+        questionCount = min(max(questionCount, countRange.lowerBound), countRange.upperBound)
+    }
+
     var body: some View {
         Section("Questions") {
-            Stepper(value: $questionCount, in: 1...max(totalQuestions, 1)) {
-                HStack {
-                    Text("Include")
-                    Spacer()
-                    Text(countDescription)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                }
+            // A text field with a stepper beside it, which is how a stepper is
+            // meant to be used: on its own it shows no value and can only be
+            // clicked one step at a time.
+            HStack(spacing: 6) {
+                Text("Include")
+                Spacer()
+                TextField("", value: $questionCount, format: .number)
+                    .textFieldStyle(.roundedBorder)
+                    .multilineTextAlignment(.trailing)
+                    .monospacedDigit()
+                    .frame(width: 54)
+                    .onSubmit(clampCount)
+                    .accessibilityLabel("Number of questions to include")
+                    .accessibilityValue(countDescription)
+                Stepper("", value: $questionCount, in: countRange)
+                    .labelsHidden()
+                    .accessibilityLabel("Number of questions to include")
+                    .accessibilityValue(countDescription)
+                Text("of \(totalQuestions)")
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
             }
-            .accessibilityLabel("Number of questions to include")
-            .accessibilityValue(countDescription)
+            .onChange(of: questionCount) { clampCount() }
 
             Toggle("Randomize question order", isOn: $shuffleQuestions)
 
@@ -37,7 +60,7 @@ struct ExamSelectionSection: View {
                 .accessibilityLabel("Version or seat label")
 
             if shuffleQuestions {
-                Text("The version label seeds the shuffle: the same label always produces the same exam, so an answer key exported later matches the copy students received. A different label produces a different exam.")
+                Text(seedNote)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

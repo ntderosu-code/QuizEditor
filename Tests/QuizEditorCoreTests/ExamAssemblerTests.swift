@@ -181,3 +181,62 @@ final class ExamSelectionExportTests: XCTestCase {
         XCTAssertEqual(studentQuiz.questions.count, 6)
     }
 }
+
+/// The formatted document printed the answers unconditionally, which made the
+/// only HTML export unusable as a student handout.
+final class FormattedDocumentOptionsTests: XCTestCase {
+    private let quiz = Quiz(
+        title: "Bank",
+        questions: (0..<4).map { index in
+            QuizQuestion(
+                type: .multipleChoice,
+                prompt: "Prompt\(index)",
+                answers: [
+                    QuizAnswer(text: "Right\(index)", isCorrect: true),
+                    QuizAnswer(text: "Wrong\(index)", isCorrect: false)
+                ],
+                feedback: "<p>Because\(index).</p>"
+            )
+        }
+    )
+
+    func testDefaultsToIncludingTheAnswers() {
+        XCTAssertTrue(FormattedDocumentOptions().includeAnswers)
+    }
+
+    func testExcludingAnswersDropsCorrectMarkersAndFeedback() {
+        let html = FormattedDocumentBuilder().document(
+            for: quiz,
+            options: FormattedDocumentOptions(includeAnswers: false)
+        )
+        XCTAssertTrue(html.contains("Right0"), "the choices themselves still print")
+        XCTAssertFalse(html.contains("Because0"), "feedback belongs to the answer key")
+        // The stylesheet always carries an li.correct rule; what matters is that
+        // no element is given the class or the tag.
+        XCTAssertFalse(html.contains("class=\"correct\""), "no choice is marked correct")
+        XCTAssertFalse(html.contains("(correct)"))
+    }
+
+    func testIncludingAnswersKeepsThem() {
+        let html = FormattedDocumentBuilder().document(
+            for: quiz,
+            options: FormattedDocumentOptions(includeAnswers: true)
+        )
+        XCTAssertTrue(html.contains("Because0"))
+    }
+
+    /// The two settings are independent: a short student handout is a subset
+    /// with the answers withheld.
+    func testSelectionAndAnswerVisibilityCompose() {
+        let html = FormattedDocumentBuilder().document(
+            for: quiz,
+            options: FormattedDocumentOptions(
+                includeAnswers: false,
+                selection: ExamSelection(questionCount: 2)
+            )
+        )
+        XCTAssertTrue(html.contains("Prompt1"))
+        XCTAssertFalse(html.contains("Prompt2"))
+        XCTAssertFalse(html.contains("Because0"))
+    }
+}

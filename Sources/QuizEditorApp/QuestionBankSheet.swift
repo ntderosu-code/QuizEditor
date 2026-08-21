@@ -67,7 +67,7 @@ struct QuestionBankSheet: View {
             Image(systemName: "magnifyingglass").foregroundStyle(.secondary).accessibilityHidden(true)
             TextField("Search questions", text: $searchText)
                 .textFieldStyle(.roundedBorder)
-                .frame(width: 200)
+                .frame(minWidth: 200)
                 .accessibilityLabel("Search the question bank")
 
             Menu {

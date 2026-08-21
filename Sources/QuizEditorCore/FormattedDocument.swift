@@ -1,5 +1,19 @@
 import Foundation
 
+/// What a formatted-document export includes.
+public struct FormattedDocumentOptions: Sendable, Equatable {
+    /// Print the correct answers and the feedback. Off produces a copy that can
+    /// go to students; on produces the instructor's copy.
+    public var includeAnswers: Bool
+    /// Which questions to print, and in what order.
+    public var selection: ExamSelection
+
+    public init(includeAnswers: Bool = true, selection: ExamSelection = ExamSelection()) {
+        self.includeAnswers = includeAnswers
+        self.selection = selection
+    }
+}
+
 /// Builds a human-readable, print-friendly HTML document from a quiz — used for
 /// both the "Export Formatted Document" command and the in-app preview modal.
 /// Question text is already stored as HTML, so it is embedded directly.
@@ -24,6 +38,11 @@ public struct FormattedDocumentBuilder: Sendable {
             .joined(separator: "\n")
         let body = "<h1>\(escape(quiz.title.isEmpty ? "Untitled Quiz" : quiz.title))</h1>\n\(questions)"
         return wrap(title: quiz.title.isEmpty ? "Untitled Quiz" : quiz.title, body: body)
+    }
+
+    /// A complete standalone HTML document for the whole quiz, per `options`.
+    public func document(for quiz: Quiz, options: FormattedDocumentOptions) -> String {
+        document(for: quiz, showAnswerKey: options.includeAnswers, selection: options.selection)
     }
 
     /// A complete standalone HTML document for a single question.

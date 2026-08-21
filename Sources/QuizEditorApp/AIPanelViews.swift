@@ -236,7 +236,7 @@ struct AIPanel: View {
             toolButton("Suggest Revisions", systemImage: "pencil.and.outline", id: quizActionID(.revise)) {
                 runQuizFeature(.revise)
             }
-            toolButton("Draft Student Feedback", systemImage: "text.bubble", id: quizActionID(.generateFeedback)) {
+            toolButton(AppCopy.draftFeedbackForQuiz, systemImage: "text.bubble", id: quizActionID(.generateFeedback)) {
                 runQuizFeature(.generateFeedback)
             }
             toolButton("Author New Questions…", systemImage: "plus.square.on.square", id: "author", action: onAuthorWithAI)
@@ -260,7 +260,7 @@ struct AIPanel: View {
             toolButton("Suggest Distractors", systemImage: "rectangle.stack.badge.plus", id: "item-distractors", disabled: !canGenerateDistractors(binding.wrappedValue)) {
                 generateItemDistractors(binding)
             }
-            toolButton("Draft Feedback", systemImage: "text.bubble", id: "item-feedback") {
+            toolButton(AppCopy.draftFeedback, systemImage: "text.bubble", id: "item-feedback") {
                 generateItemFeedback(binding)
             }
         }
@@ -285,13 +285,17 @@ struct AIPanel: View {
     }
 
     private func sectionHeader(_ title: String) -> some View {
-        Text(title.uppercased())
-            .font(.caption2.weight(.semibold))
+        // Title-style capitalization, not all-caps: macOS Tahoe dropped the
+        // shouted section header.
+        Text(title)
+            .font(.caption.weight(.semibold))
             .foregroundStyle(.secondary)
             .accessibilityAddTraits(.isHeader)
     }
 
-    /// A full-width tool button. Shows a spinner in place of its icon while its own
+    /// A tool button, sized to its own title the way Mac push buttons are:
+    /// stretching a column of buttons edge to edge is an iOS convention and read
+    /// as foreign here. Shows a spinner in place of its icon while its own
     /// action is running, and is disabled while any tool is running.
     @ViewBuilder
     private func toolButton(
@@ -311,9 +315,7 @@ struct AIPanel: View {
                     Image(systemName: systemImage).frame(width: 18)
                 }
                 Text(title)
-                Spacer(minLength: 0)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(.rect)
         }
         .disabled(disabled || (disabledWhenRunning && isRunning))

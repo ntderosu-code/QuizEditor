@@ -1,27 +1,45 @@
 import SwiftUI
 
+/// The title block at the top of a sheet. Pass a `systemImage` for sheets whose
+/// subject has an established icon; omit it for plain ones.
 @MainActor
 @ViewBuilder
-func sheetHeader(_ title: String, systemImage: String) -> some View {
+func sheetHeader(_ title: String, systemImage: String? = nil) -> some View {
     HStack {
-        Label(title, systemImage: systemImage)
-            .font(.title2.bold())
+        if let systemImage {
+            Label(title, systemImage: systemImage)
+                .font(.title2.bold())
+        } else {
+            Text(title)
+                .font(.title2.bold())
+        }
         Spacer()
     }
     .padding(20)
 }
 
+/// The confirm/cancel row at the bottom of a sheet.
+///
+/// `leading` fills the space opposite the buttons, for sheets that explain what
+/// the confirm button is about to do.
 @MainActor
 @ViewBuilder
-func sheetFooter(canSave: Bool, onSave: @escaping () -> Void, onCancel: @escaping () -> Void) -> some View {
+func sheetFooter<Leading: View>(
+    confirmTitle: String = "Save",
+    isEnabled: Bool = true,
+    @ViewBuilder leading: () -> Leading = { EmptyView() },
+    onConfirm: @escaping () -> Void,
+    onCancel: @escaping () -> Void
+) -> some View {
     HStack {
+        leading()
         Spacer()
         Button("Cancel", action: onCancel)
             .keyboardShortcut(.cancelAction)
-        Button("Save", action: onSave)
+        Button(confirmTitle, action: onConfirm)
             .buttonStyle(.borderedProminent)
             .keyboardShortcut(.defaultAction)
-            .disabled(!canSave)
+            .disabled(!isEnabled)
     }
     .padding(20)
 }

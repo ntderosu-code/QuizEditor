@@ -125,7 +125,7 @@ struct ImportPickerSheet: View {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary).accessibilityHidden(true)
                 TextField("Filter", text: $search)
                     .textFieldStyle(.roundedBorder)
-                    .frame(width: 180)
+                    .frame(minWidth: 180)
                     .accessibilityLabel("Filter questions")
             }
             .padding(.horizontal, 20)

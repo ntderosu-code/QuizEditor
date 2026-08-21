@@ -1,40 +1,6 @@
 import SwiftUI
 import QuizEditorCore
 
-/// A compact status dot for a sidebar row showing whether the offline linter
-/// found anything, following the macOS convention of a small dot rather than an
-/// icon. Fill *and* color (plus a VoiceOver label) convey severity, so color is
-/// never the sole signal: a warning is a filled dot, a suggestion a hollow ring.
-struct LintBadge: View {
-    let findings: [LintFinding]
-
-    private var hasWarning: Bool { findings.contains { $0.severity == .warning } }
-
-    var body: some View {
-        if !findings.isEmpty {
-            Group {
-                if hasWarning {
-                    Circle().fill(Color.orange)
-                } else {
-                    Circle().strokeBorder(Color.secondary, lineWidth: 1.5)
-                }
-            }
-            .frame(width: 8, height: 8)
-            .help(summary)
-            .accessibilityLabel(accessibilityText)
-        }
-    }
-
-    private var summary: String {
-        findings.map(\.message).joined(separator: "\n")
-    }
-
-    private var accessibilityText: String {
-        let noun = hasWarning ? "warning" : "suggestion"
-        return "\(findings.count) item-writing \(noun)\(findings.count == 1 ? "" : "s")"
-    }
-}
-
 /// Inline, non-blocking list of lint findings shown inside the question editor.
 struct LintFindingsSection: View {
     let findings: [LintFinding]
@@ -104,14 +70,7 @@ struct QuizLintSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Label(AppCopy.checkQuiz, systemImage: "checklist")
-                    .font(.title2.bold())
-                Spacer()
-                Button("Done") { dismiss() }
-                    .keyboardShortcut(.defaultAction)
-            }
-            .padding(20)
+            sheetHeader(AppCopy.checkQuiz, systemImage: "checklist")
 
             Divider()
 
@@ -154,6 +113,16 @@ struct QuizLintSheet: View {
                     .padding(20)
                 }
             }
+
+            Divider()
+
+            HStack {
+                Spacer()
+                Button("Done") { dismiss() }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+            }
+            .padding(20)
         }
         .frame(minWidth: 560, minHeight: 520)
     }
