@@ -27,14 +27,7 @@ struct AIResultSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Label(result.title, systemImage: "sparkles")
-                    .font(.title2.bold())
-                Spacer()
-                Button("Done") { dismiss() }
-                    .keyboardShortcut(.defaultAction)
-            }
-            .padding(20)
+            sheetHeader(result.title, systemImage: "sparkles")
 
             Divider()
 
@@ -69,7 +62,9 @@ struct AIResultSheet: View {
                 } label: {
                     Label("Save…", systemImage: "square.and.arrow.down")
                 }
-                .buttonStyle(.borderedProminent)
+                Button("Done") { dismiss() }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
             }
             .padding(20)
         }

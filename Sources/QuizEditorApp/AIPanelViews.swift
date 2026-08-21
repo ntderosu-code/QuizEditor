@@ -236,7 +236,7 @@ struct AIPanel: View {
             toolButton("Suggest Revisions", systemImage: "pencil.and.outline", id: quizActionID(.revise)) {
                 runQuizFeature(.revise)
             }
-            toolButton("Draft Student Feedback", systemImage: "text.bubble", id: quizActionID(.generateFeedback)) {
+            toolButton(AppCopy.draftFeedbackForQuiz, systemImage: "text.bubble", id: quizActionID(.generateFeedback)) {
                 runQuizFeature(.generateFeedback)
             }
             toolButton("Author New Questions…", systemImage: "plus.square.on.square", id: "author", action: onAuthorWithAI)
@@ -260,7 +260,7 @@ struct AIPanel: View {
             toolButton("Suggest Distractors", systemImage: "rectangle.stack.badge.plus", id: "item-distractors", disabled: !canGenerateDistractors(binding.wrappedValue)) {
                 generateItemDistractors(binding)
             }
-            toolButton("Draft Feedback", systemImage: "text.bubble", id: "item-feedback") {
+            toolButton(AppCopy.draftFeedback, systemImage: "text.bubble", id: "item-feedback") {
                 generateItemFeedback(binding)
             }
         }

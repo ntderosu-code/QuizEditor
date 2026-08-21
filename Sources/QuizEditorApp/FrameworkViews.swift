@@ -25,8 +25,6 @@ struct FrameworkManagementSheet: View {
                 Spacer()
                 Button { importFramework() } label: { Label("Import…", systemImage: "square.and.arrow.down") }
                 Button { editingFramework = newFramework() } label: { Label("New", systemImage: "plus") }
-                Button("Done") { dismiss() }
-                    .keyboardShortcut(.defaultAction)
             }
             .padding(20)
 
@@ -59,6 +57,16 @@ struct FrameworkManagementSheet: View {
                 .padding(20)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+
+            Divider()
+
+            HStack {
+                Spacer()
+                Button("Done") { dismiss() }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+            }
+            .padding(20)
         }
         .frame(minWidth: 560, minHeight: 560)
         .sheet(item: $editingFramework) { framework in
@@ -402,12 +410,27 @@ struct CoverageReportSheet: View {
                 VStack(alignment: .leading, spacing: 20) {
                     let report = report
                     let mapped = report.totalQuestions - report.unmappedQuestionCount
-                    Text("\(mapped) of \(report.totalQuestions) question\(report.totalQuestions == 1 ? "" : "s") link a competency. \(report.unmappedQuestionCount) link none.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
 
-                    ForEach(frameworks) { framework in
+                    if mapped == 0 {
+                        // Every node is a "gap" before any linking has happened,
+                        // and a column of warnings for a feature the author has
+                        // not started using is noise, not a finding.
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("No questions link a competency yet.")
+                                .font(.callout)
+                            Text("Link a question to a framework node from the question's Link Competencies action, and this report will show which nodes are covered and which are still gaps.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    } else {
+                        Text("\(mapped) of \(report.totalQuestions) question\(report.totalQuestions == 1 ? "" : "s") link a competency. \(report.unmappedQuestionCount) link none.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    ForEach(mapped == 0 ? [] : frameworks) { framework in
                         let rows = report.nodeCoverage.filter { $0.frameworkID == framework.id }
                         if !rows.isEmpty {
                             VStack(alignment: .leading, spacing: 6) {

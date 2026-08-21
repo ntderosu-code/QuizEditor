@@ -158,7 +158,7 @@ struct QuestionEditor: View {
             Menu {
                 Button("Suggest Distractors") { generateDistractors() }
                     .disabled(!canGenerateDistractors)
-                Button("Draft Feedback") { generateFeedback() }
+                Button(AppCopy.draftFeedback) { generateFeedback() }
                 if undoSnapshot != nil {
                     Divider()
                     Button("Undo AI Changes") { undoAIChanges() }
@@ -205,7 +205,7 @@ struct QuestionEditor: View {
                     if isGenerating {
                         ProgressView().controlSize(.small)
                     } else {
-                        Label("Generate draft feedback", systemImage: "text.bubble")
+                        Label(AppCopy.draftFeedback, systemImage: "text.bubble")
                     }
                 }
                 .font(.caption)
@@ -395,9 +395,9 @@ struct AnswerEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                Text("Answers")
+                Text(usesAcceptedAnswers ? "Accepted answers" : "Answers")
                     .font(.subheadline.weight(.semibold))
-                Text(usesSingleCorrectAnswer ? "Select the one correct answer." : "Check every correct answer.")
+                Text(answersHint)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -407,9 +407,9 @@ struct AnswerEditor: View {
                 answerRow($answer)
             }
 
-            // "Add answer" sits directly under the list it extends.
+            // Sits directly under the list it extends.
             Button(action: addAnswer) {
-                Label("Add answer", systemImage: "plus")
+                Label(usesAcceptedAnswers ? "Add accepted answer" : "Add answer", systemImage: "plus")
             }
             .buttonStyle(.bordered)
 
@@ -420,23 +420,33 @@ struct AnswerEditor: View {
         }
     }
 
+    private var answersHint: String {
+        if usesAcceptedAnswers {
+            return "Any of these counts as correct. Add the spellings you will accept."
+        }
+        return usesSingleCorrectAnswer ? "Select the one correct answer." : "Check every correct answer."
+    }
+
     @ViewBuilder
     private func answerRow(_ answer: Binding<QuizAnswer>) -> some View {
         let index = question.answers.firstIndex { $0.id == answer.wrappedValue.id } ?? 0
         let letter = Self.answerLetter(index)
+        let rowName = usesAcceptedAnswers ? "Accepted answer \(index + 1)" : "Answer \(letter)"
         // One line per answer, with a fixed layout, so marking an answer correct
         // never adds or removes a row and the choices never reflow.
         HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Text(letter)
-                .font(.callout.weight(.semibold).monospaced())
-                .frame(width: 18, alignment: .leading)
-                .accessibilityHidden(true)
+            if !usesAcceptedAnswers {
+                Text(letter)
+                    .font(.callout.weight(.semibold).monospaced())
+                    .frame(width: 18, alignment: .leading)
+                    .accessibilityHidden(true)
 
-            correctSelector(for: answer.wrappedValue.id, letter: letter, isCorrect: answer.wrappedValue.isCorrect)
+                correctSelector(for: answer.wrappedValue.id, letter: letter, isCorrect: answer.wrappedValue.isCorrect)
+            }
 
-            TextField("Answer text", text: answer.text)
+            TextField(usesAcceptedAnswers ? "Accepted answer" : "Answer text", text: answer.text)
                 .textFieldStyle(.roundedBorder)
-                .accessibilityLabel("Answer \(letter) text")
+                .accessibilityLabel("\(rowName) text")
 
             Button(role: .destructive) {
                 question.answers.removeAll { $0.id == answer.wrappedValue.id }
@@ -444,11 +454,13 @@ struct AnswerEditor: View {
                 Image(systemName: "minus.circle")
             }
             .buttonStyle(.borderless)
-            .accessibilityLabel("Remove answer \(letter)")
+            .accessibilityLabel("Remove \(rowName.lowercased())")
         }
         .contextMenu {
-            Button("Mark as Correct") { markOnlyCorrect(answer.wrappedValue.id) }
-                .disabled(answer.wrappedValue.isCorrect)
+            if !usesAcceptedAnswers {
+                Button("Mark as Correct") { markOnlyCorrect(answer.wrappedValue.id) }
+                    .disabled(answer.wrappedValue.isCorrect)
+            }
             Button("Duplicate Answer") { duplicateAnswer(answer.wrappedValue.id) }
             Divider()
             Button("Move Up") { moveAnswer(answer.wrappedValue.id, by: -1) }
@@ -542,6 +554,13 @@ struct AnswerEditor: View {
 
     private var usesSingleCorrectAnswer: Bool {
         question.type == .multipleChoice || question.type == .trueFalse
+    }
+
+    /// Fill-in-blank and short answer collect accepted responses, not choices.
+    /// Every row is accepted, so there is nothing to mark correct, and numbering
+    /// them A/B/C would imply a list the student picks from.
+    private var usesAcceptedAnswers: Bool {
+        question.type == .fillInBlank || question.type == .shortAnswer
     }
 
     private func correctBinding(for answerID: UUID) -> Binding<Bool> {
@@ -667,8 +686,8 @@ struct MatchingEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("Matching Pairs")
-                    .font(.headline)
+                Text("Matching pairs")
+                    .font(.subheadline.weight(.semibold))
                 Spacer()
                 Button {
                     matches.append(MatchingPair(prompt: "", match: ""))

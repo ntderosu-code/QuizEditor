@@ -70,14 +70,7 @@ struct QuizLintSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Label(AppCopy.checkQuiz, systemImage: "checklist")
-                    .font(.title2.bold())
-                Spacer()
-                Button("Done") { dismiss() }
-                    .keyboardShortcut(.defaultAction)
-            }
-            .padding(20)
+            sheetHeader(AppCopy.checkQuiz, systemImage: "checklist")
 
             Divider()
 
@@ -120,6 +113,16 @@ struct QuizLintSheet: View {
                     .padding(20)
                 }
             }
+
+            Divider()
+
+            HStack {
+                Spacer()
+                Button("Done") { dismiss() }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+            }
+            .padding(20)
         }
         .frame(minWidth: 560, minHeight: 520)
     }

@@ -39,7 +39,7 @@ struct SidebarView: View {
         var id: String { rawValue }
         var label: String {
             switch self {
-            case .all: "All"
+            case .all: "All readiness"
             case .needsWork: "Needs work"
             case .ready: "Ready"
             }
@@ -219,6 +219,17 @@ struct SidebarView: View {
         .padding(.bottom, 4)
     }
 
+    /// The difficulty or tag currently narrowing the list, if any.
+    private var activeMetadataFilter: String? {
+        difficultyFilter?.displayName ?? tagFilter
+    }
+
+    /// Naming the active filter in the button is the only cue the list is
+    /// narrowed; a bare "Filter" looked identical either way.
+    private var filterMenuTitle: String {
+        activeMetadataFilter ?? "Filter"
+    }
+
     private var filterMenu: some View {
         Menu {
             Picker("Difficulty", selection: $difficultyFilter) {
@@ -236,7 +247,9 @@ struct SidebarView: View {
                 }
             }
         } label: {
-            Label("Filter", systemImage: "line.3.horizontal.decrease.circle")
+            Label(filterMenuTitle, systemImage: activeMetadataFilter == nil
+                  ? "line.3.horizontal.decrease.circle"
+                  : "line.3.horizontal.decrease.circle.fill")
         }
         .menuStyle(.button)
         .controlSize(.small)
