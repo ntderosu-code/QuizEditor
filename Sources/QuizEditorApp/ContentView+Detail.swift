@@ -33,14 +33,16 @@ extension ContentView {
             } description: {
                 Text("Choose a question or add a new one to start writing.")
             } actions: {
-                // Stack the actions so they never overflow the (sometimes narrow)
-                // editor card. Each stretches to a shared width for a tidy column.
+                // Stacked so they never overflow the (sometimes narrow) editor
+                // card. Each sizes to its own title, which is how Mac push
+                // buttons are meant to work: stretching them to a shared width
+                // is an iOS convention, and a Menu will not stretch at all, so
+                // the column came out ragged when the buttons were forced wide.
                 VStack(spacing: 8) {
                     Button {
                         addQuestion()
                     } label: {
                         Label("Add Question", systemImage: "plus")
-                            .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
 
@@ -48,7 +50,6 @@ extension ContentView {
                         isImporterPresented = true
                     } label: {
                         Label("Import Marked Text", systemImage: "square.and.arrow.down")
-                            .frame(maxWidth: .infinity)
                     }
 
                     // No primaryAction: the menu now offers two different package
@@ -76,10 +77,12 @@ extension ContentView {
                         // fits less text than the plain buttons above it. The
                         // package formats are named on the menu's own items.
                         Label("Import a Package", systemImage: "doc.zipper")
-                            .frame(maxWidth: .infinity)
                     }
+                    // .button so the menu carries the same chrome as the
+                    // buttons above it rather than reading as a pop-up.
+                    .menuStyle(.button)
+                    .fixedSize()
                 }
-                .frame(width: 260)
             }
         }
     }

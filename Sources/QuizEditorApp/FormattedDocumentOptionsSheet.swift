@@ -35,6 +35,15 @@ struct FormattedDocumentOptionsSheet: View {
             Form {
                 ExamSelectionSection(
                     totalQuestions: totalQuestions,
+                    // No mention of an answer key here: the formatted document
+                    // always includes the answers, so there is no separate key
+                    // copy to line up with.
+                    seedNote: """
+                    The version label seeds the shuffle: the same label always \
+                    produces the same questions in the same order, so you can \
+                    reproduce this exact document later. A different label \
+                    produces a different one.
+                    """,
                     shuffleQuestions: $shuffleQuestions,
                     questionCount: $questionCount,
                     versionLabel: $versionLabel
@@ -45,6 +54,11 @@ struct FormattedDocumentOptionsSheet: View {
             Divider()
 
             sheetFooter(confirmTitle: "Export…") {
+                Label("Includes the correct answers and feedback.", systemImage: "key.fill")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } onConfirm: {
                 onExport(selection)
                 dismiss()
             } onCancel: { dismiss() }

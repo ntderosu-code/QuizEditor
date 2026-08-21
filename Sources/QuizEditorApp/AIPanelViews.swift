@@ -293,7 +293,9 @@ struct AIPanel: View {
             .accessibilityAddTraits(.isHeader)
     }
 
-    /// A full-width tool button. Shows a spinner in place of its icon while its own
+    /// A tool button, sized to its own title the way Mac push buttons are:
+    /// stretching a column of buttons edge to edge is an iOS convention and read
+    /// as foreign here. Shows a spinner in place of its icon while its own
     /// action is running, and is disabled while any tool is running.
     @ViewBuilder
     private func toolButton(
@@ -313,9 +315,7 @@ struct AIPanel: View {
                     Image(systemName: systemImage).frame(width: 18)
                 }
                 Text(title)
-                Spacer(minLength: 0)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(.rect)
         }
         .disabled(disabled || (disabledWhenRunning && isRunning))

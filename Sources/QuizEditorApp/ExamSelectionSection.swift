@@ -9,6 +9,9 @@ import QuizEditorCore
 /// field it describes.
 struct ExamSelectionSection: View {
     let totalQuestions: Int
+    /// What reproducing this exact export buys the author. The paper exam has a
+    /// separate answer-key copy to match; the formatted document does not.
+    let seedNote: String
     @Binding var shuffleQuestions: Bool
     @Binding var questionCount: Int
     @Binding var versionLabel: String
@@ -37,7 +40,7 @@ struct ExamSelectionSection: View {
                 .accessibilityLabel("Version or seat label")
 
             if shuffleQuestions {
-                Text("The version label seeds the shuffle: the same label always produces the same exam, so an answer key exported later matches the copy students received. A different label produces a different exam.")
+                Text(seedNote)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
