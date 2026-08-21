@@ -285,8 +285,10 @@ struct AIPanel: View {
     }
 
     private func sectionHeader(_ title: String) -> some View {
-        Text(title.uppercased())
-            .font(.caption2.weight(.semibold))
+        // Title-style capitalization, not all-caps: macOS Tahoe dropped the
+        // shouted section header.
+        Text(title)
+            .font(.caption.weight(.semibold))
             .foregroundStyle(.secondary)
             .accessibilityAddTraits(.isHeader)
     }

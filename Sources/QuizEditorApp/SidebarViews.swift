@@ -134,6 +134,12 @@ struct SidebarView: View {
                     Label("Import", systemImage: "square.and.arrow.down")
                 }
                 .menuIndicator(.hidden)
+                // .button, so the menu picks up the toolbar's button metrics.
+                // A plain Menu renders a 30x28 pull-down inside the 52pt
+                // toolbar row, which reads as a smaller control than the
+                // buttons beside it.
+                .menuStyle(.button)
+                .buttonStyle(.accessoryBar)
                 .accessibilityLabel("Import")
                 .help("Import questions from marked text, a QTI .zip, Common Cartridge, another file, or the question bank")
             }

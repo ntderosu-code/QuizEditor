@@ -133,7 +133,7 @@ struct QuestionReviewDetail: View {
     @ViewBuilder
     private func diffBlock(tag: String, text: String, tint: Color) -> some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(tag.uppercased())
+            Text(tag)
                 .font(.caption2.bold())
                 .foregroundStyle(.secondary)
             Text(text)

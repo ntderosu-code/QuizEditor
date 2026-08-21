@@ -285,6 +285,12 @@ struct ContentView: View {
                     Label("Export", systemImage: "square.and.arrow.up")
                 }
                 .menuIndicator(.hidden)
+                // .button, so the menu picks up the toolbar's button metrics.
+                // A plain Menu renders a 30x28 pull-down inside the 52pt
+                // toolbar row, which reads as a smaller control than the
+                // buttons beside it.
+                .menuStyle(.button)
+                .buttonStyle(.accessoryBar)
                 .accessibilityLabel("Export")
                 .help("Export as a QTI package (for Canvas and other LMSs), a formatted document, or a printable paper exam")
             }

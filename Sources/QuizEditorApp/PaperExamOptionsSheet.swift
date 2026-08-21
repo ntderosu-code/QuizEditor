@@ -34,9 +34,7 @@ struct PaperExamOptionsSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Export Paper Exam")
-                .font(.title2.bold())
-                .padding(20)
+            sheetHeader("Export Paper Exam", systemImage: "doc.text")
 
             Divider()
 
@@ -64,25 +62,21 @@ struct PaperExamOptionsSheet: View {
 
             Divider()
 
-            HStack {
+            sheetFooter(confirmTitle: "Export…") {
                 Label(
                     includeAnswerKey ? "Exports the instructor answer key." : "Exports the blank student copy.",
                     systemImage: includeAnswerKey ? "key.fill" : "doc.text"
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                Spacer()
-                Button("Cancel") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                Button("Export…") {
-                    onExport(options)
-                    dismiss()
-                }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.defaultAction)
-            }
-            .padding(20)
+            } onConfirm: {
+                onExport(options)
+                dismiss()
+            } onCancel: { dismiss() }
         }
-        .frame(width: 540, height: 620)
+        // A minimum, not a fixed size, so the sheet grows with its content the
+        // way every other sheet here does: the seeding explanation appears when
+        // randomizing is switched on, and a fixed height clipped the row below it.
+        .frame(minWidth: 540, minHeight: 620)
     }
 }

@@ -28,9 +28,7 @@ struct FormattedDocumentOptionsSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Export Formatted Document")
-                .font(.title2.bold())
-                .padding(20)
+            sheetHeader("Export Formatted Document", systemImage: "doc.richtext")
 
             Divider()
 
@@ -46,19 +44,12 @@ struct FormattedDocumentOptionsSheet: View {
 
             Divider()
 
-            HStack {
-                Spacer()
-                Button("Cancel") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                Button("Export…") {
-                    onExport(selection)
-                    dismiss()
-                }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.defaultAction)
-            }
-            .padding(20)
+            sheetFooter(confirmTitle: "Export…") {
+                onExport(selection)
+                dismiss()
+            } onCancel: { dismiss() }
         }
-        .frame(width: 540, height: 380)
+        // A minimum, not a fixed size: see PaperExamOptionsSheet.
+        .frame(minWidth: 540, minHeight: 380)
     }
 }

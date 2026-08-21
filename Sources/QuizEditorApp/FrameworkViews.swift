@@ -211,7 +211,7 @@ struct FrameworkEditorSheet: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             Divider()
-            sheetFooter(canSave: canSave) {
+            sheetFooter(isEnabled: canSave) {
                 onSave(draft)
                 dismiss()
             } onCancel: { dismiss() }
@@ -251,7 +251,7 @@ struct FrameworkNodeTreeEditor: View {
                 Spacer().frame(width: CGFloat(depth) * 18)
                 TextField("Code", text: $nodes[index].code)
                     .textFieldStyle(.roundedBorder)
-                    .frame(width: 70)
+                    .frame(minWidth: 70, maxWidth: 110)
                     .accessibilityLabel("Node code")
                 TextField("Label", text: $nodes[index].label)
                     .textFieldStyle(.roundedBorder)

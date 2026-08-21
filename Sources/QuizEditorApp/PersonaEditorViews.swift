@@ -48,7 +48,7 @@ struct PersonaEditorSheet: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             Divider()
-            sheetFooter(canSave: canSave) {
+            sheetFooter(isEnabled: canSave) {
                 onSave(draft)
                 dismiss()
             } onCancel: { dismiss() }
@@ -533,7 +533,7 @@ struct DeclarativeRuleForm: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             Divider()
-            sheetFooter(canSave: canSave) {
+            sheetFooter(isEnabled: canSave) {
                 draft.id = draft.id.trimmingCharacters(in: .whitespacesAndNewlines)
                 onSave(draft)
                 dismiss()
