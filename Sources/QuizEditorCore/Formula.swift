@@ -45,7 +45,8 @@ public struct FormulaAnswer: Codable, Sendable, Equatable {
 
     /// The result of substituting the variable values into the expression using
     /// a tiny, predictable evaluator: `*`, `/`, `+`, `-`, parentheses, and the
-    /// variable names. Empty/malformed expressions return `nil` so the exporter
+    /// variable names. Empty/malformed expressions, and any result that is not
+    /// finite (division by a zero-valued variable), return `nil` so the exporter
     /// can fall back to the unconfigured condition. The evaluator is intentionally
     /// minimal — Canvas evaluates the full expression server-side; we only need
     /// enough here to produce a representative numeric value for the answer key.
@@ -78,6 +79,11 @@ enum FormulaEvaluator {
               index == tokens.count else {
             return nil
         }
+        // Dividing by a zero-valued variable produces infinity or NaN. That is not
+        // a usable answer key, and the whole-number formatters downstream would
+        // trap converting it to Int, so treat it the same as a malformed
+        // expression: unconfigured.
+        guard value.isFinite else { return nil }
         return value
     }
 

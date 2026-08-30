@@ -414,7 +414,28 @@ public struct QTIImporter: Sendable {
                 return FormulaVariable(name: pair[0], value: value)
             }
         guard !expression.isEmpty || !variables.isEmpty else { return nil }
-        return FormulaAnswer(variables: variables, expression: expression)
+        return FormulaAnswer(
+            variables: variables,
+            expression: expression,
+            tolerance: parseClassicFormulaTolerance(in: xml)
+        )
+    }
+
+    /// The tolerance is not carried in qtimetadata; it is implied by the accepted
+    /// band the exporter writes as `value - tolerance ... value + tolerance`. Half
+    /// the width of that band recovers it, and a formula with no band graded as an
+    /// exact match, so its tolerance is zero. Reading the band rather than adding a
+    /// metadata field means packages written before the tolerance was recoverable
+    /// still import with their grading intact.
+    private func parseClassicFormulaTolerance(in xml: String) -> Double {
+        guard let low = matches(pattern: #"<vargte[^>]*>([^<]+)</vargte>"#, in: xml).first
+            .flatMap({ Double($0.trimmingCharacters(in: .whitespaces)) }),
+            let high = matches(pattern: #"<varlte[^>]*>([^<]+)</varlte>"#, in: xml).first
+            .flatMap({ Double($0.trimmingCharacters(in: .whitespaces)) }),
+            high > low else {
+            return 0
+        }
+        return (high - low) / 2
     }
 
     private func parseClassicFileUploadMimes(in xml: String) -> [String] {

@@ -109,10 +109,11 @@ public struct QuestionLinter: Sendable {
     /// built-ins untouched. `context` supplies resolved linked entities for checks
     /// that need them (recall-drift); pass `.empty` when there are no links.
     ///
-    /// `kind` is `.graded` by default. When `.survey`, answer-key rules
-    /// (noCorrectAnswer, multipleCorrectAnswers, missingFeedback, and
-    /// numericMissingUnit) are skipped — surveys have no correct answer to mark
-    /// and the "missing feedback" guidance doesn't apply to a non-graded item.
+    /// `kind` is `.graded` by default. When `.survey`, the answer-key rules
+    /// (noCorrectAnswer, multipleCorrectAnswers) and missingFeedback are skipped —
+    /// surveys have no correct answer to mark, and the "missing feedback" guidance
+    /// doesn't apply to a non-graded item. Distractor-quality and terminology rules
+    /// still run, since a survey option can still be badly written.
     public func findings(for question: QuizQuestion, persona: Persona, context: QuestionLinkContext = .empty, kind: QuizKind = .graded) -> [LintFinding] {
         var builtIn: [LintFinding] = []
 

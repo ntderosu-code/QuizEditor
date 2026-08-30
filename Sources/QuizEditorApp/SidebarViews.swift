@@ -56,8 +56,8 @@ struct SidebarView: View {
             }
             switch readinessFilter {
             case .all: break
-            case .needsWork: if QuestionReadiness(question: question).status == .ready { return nil }
-            case .ready: if QuestionReadiness(question: question).status != .ready { return nil }
+            case .needsWork: if QuestionReadiness(question: question, kind: quiz.kind).status == .ready { return nil }
+            case .ready: if QuestionReadiness(question: question, kind: quiz.kind).status != .ready { return nil }
             }
             if !needle.isEmpty {
                 let haystack = (html.plainText(fromHTML: question.prompt) + " "
@@ -154,7 +154,7 @@ struct SidebarView: View {
     }
 
     private func questionRow(number: Int, question: QuizQuestion) -> some View {
-        SidebarQuestionRow(number: number, question: question, findings: lintFindings[question.id] ?? [])
+        SidebarQuestionRow(number: number, question: question, kind: quiz.kind, findings: lintFindings[question.id] ?? [])
             .tag(question.id)
             .contextMenu {
                 Button("Duplicate Question") { onDuplicate(question.id) }
@@ -267,6 +267,7 @@ struct SidebarView: View {
 struct SidebarQuestionRow: View {
     let number: Int
     let question: QuizQuestion
+    var kind: QuizKind = .graded
     var findings: [LintFinding] = []
 
     private var plainPrompt: String {
@@ -275,7 +276,7 @@ struct SidebarQuestionRow: View {
     }
 
     private var status: ReadinessStatus {
-        QuestionReadiness(question: question).status
+        QuestionReadiness(question: question, kind: kind).status
     }
 
     var body: some View {

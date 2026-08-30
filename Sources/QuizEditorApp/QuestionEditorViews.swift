@@ -23,6 +23,9 @@ struct QuestionEditor: View {
     var linkedContext: PromptLinkContext = .empty
     /// The active persona, so the inline item-writing checks reflect the discipline.
     var persona: Persona = .general
+    /// The quiz's kind. A survey has no answer key to grade and no result to
+    /// explain, so the lint and readiness checks for both are skipped.
+    var kind: QuizKind = .graded
     /// Opens the formatted preview for this question (owned by ContentView).
     var onPreview: () -> Void = {}
     let onDelete: () -> Void
@@ -44,7 +47,7 @@ struct QuestionEditor: View {
     }
 
     private var findings: [LintFinding] {
-        QuestionLinter().findings(for: question, persona: persona)
+        QuestionLinter().findings(for: question, persona: persona, kind: kind)
     }
 
     /// A non-optional binding to the question's numeric spec, materializing a
@@ -106,12 +109,12 @@ struct QuestionEditor: View {
                     } else if question.type == .fileUpload {
                         FileUploadEditor(allowedFileTypes: fileTypesBinding)
                     } else if question.type != .essay {
-                        AnswerEditor(question: $question)
+                        AnswerEditor(question: $question, kind: kind)
                     }
 
                     feedbackSection
 
-                    let readiness = QuestionReadiness(question: question)
+                    let readiness = QuestionReadiness(question: question, kind: kind)
                     if readiness.status != .ready {
                         QuestionReadinessView(readiness: readiness)
                     }
@@ -141,7 +144,7 @@ struct QuestionEditor: View {
                 HStack(spacing: 8) {
                     Text("Question \(questionNumber) of \(questionTotal)")
                         .font(.headline)
-                    ReadinessBadge(status: QuestionReadiness(question: question).status)
+                    ReadinessBadge(status: QuestionReadiness(question: question, kind: kind).status)
                 }
                 Text(question.type.displayName)
                     .font(.caption)
@@ -418,6 +421,7 @@ struct QuestionReviewSheet: View {
 
 struct AnswerEditor: View {
     @Binding var question: QuizQuestion
+    var kind: QuizKind = .graded
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -548,7 +552,7 @@ struct AnswerEditor: View {
     @ViewBuilder
     private var answerValidation: some View {
         let relevant: Set<String> = ["key", "choices", "blanks", "duplicates"]
-        let issues = QuestionReadiness(question: question).checks
+        let issues = QuestionReadiness(question: question, kind: kind).checks
             .filter { relevant.contains($0.id) && !$0.isSatisfied }
         if !issues.isEmpty {
             VStack(alignment: .leading, spacing: 4) {

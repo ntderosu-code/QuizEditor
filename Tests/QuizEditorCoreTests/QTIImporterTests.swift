@@ -346,6 +346,50 @@ final class QTIImporterTests: XCTestCase {
         XCTAssertEqual(question.formula?.computedValue, 19.6)
     }
 
+    func testRecoversFormulaToleranceFromClassicBounds() throws {
+        // The tolerance is not in the qtimetadata; it is implied by the accepted
+        // band the exporter writes into resprocessing. Round-tripping a formula
+        // must not silently turn a tolerance band into an exact match.
+        let quiz = Quiz(title: "Physics", questions: [
+            QuizQuestion(
+                type: .formula,
+                prompt: "Compute F.",
+                formula: FormulaAnswer(
+                    variables: [FormulaVariable(name: "m", value: 2), FormulaVariable(name: "a", value: 9.8)],
+                    expression: "m * a",
+                    tolerance: 0.5
+                )
+            )
+        ])
+        let archiveURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".zip")
+        defer { try? FileManager.default.removeItem(at: archiveURL) }
+        try QTIPackageWriter(target: .qti12).writeZip(for: quiz, to: archiveURL)
+
+        let imported = try QTIImporter().importQuiz(fromZipAt: archiveURL)
+        let formula = try XCTUnwrap(imported.questions.first?.formula)
+        XCTAssertEqual(formula.expression, "m * a")
+        XCTAssertEqual(formula.tolerance, 0.5, accuracy: 1e-9)
+    }
+
+    func testFormulaWithoutToleranceBandImportsAsExactMatch() throws {
+        let quiz = Quiz(title: "Physics", questions: [
+            QuizQuestion(
+                type: .formula,
+                prompt: "Compute F.",
+                formula: FormulaAnswer(
+                    variables: [FormulaVariable(name: "m", value: 2), FormulaVariable(name: "a", value: 9.8)],
+                    expression: "m * a"
+                )
+            )
+        ])
+        let archiveURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".zip")
+        defer { try? FileManager.default.removeItem(at: archiveURL) }
+        try QTIPackageWriter(target: .qti12).writeZip(for: quiz, to: archiveURL)
+
+        let imported = try QTIImporter().importQuiz(fromZipAt: archiveURL)
+        XCTAssertEqual(imported.questions.first?.formula?.tolerance, 0)
+    }
+
     func testRecognizesFormulaQTI21Type() throws {
         // The QTI 2.1 / New Quizzes community calls these `formula_question` —
         // the importer should map it to .formula too.

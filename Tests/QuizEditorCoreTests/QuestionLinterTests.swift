@@ -254,4 +254,18 @@ final class QuestionLinterTests: XCTestCase {
         XCTAssertTrue(surveyRules.contains(.emptyOption))
         XCTAssertTrue(surveyRules.contains(.duplicateOptions))
     }
+
+    func testSurveyStillFlagsAMissingNumericUnit() {
+        // The expected unit is about the question being unambiguous, not about
+        // grading, so a persona that requires it still gets the finding in a
+        // survey.
+        let question = QuizQuestion(
+            type: .numeric,
+            prompt: "How much water do you drink a day?",
+            feedback: "Thanks.",
+            numeric: NumericAnswer(mode: .exact, value: 2)
+        )
+        let surveyRules = rules(linter.findings(for: question, persona: .pharmacy, kind: .survey))
+        XCTAssertTrue(surveyRules.contains(.numericMissingUnit))
+    }
 }

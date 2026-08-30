@@ -293,7 +293,7 @@ public struct PaperExamBuilder: Sendable {
     }
 
     private func formatPoints(_ points: Double) -> String {
-        points.rounded() == points ? String(Int(points)) : String(points)
+        formatQTINumber(points)
     }
 
     private func escape(_ value: String) -> String {

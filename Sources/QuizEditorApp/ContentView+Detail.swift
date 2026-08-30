@@ -19,6 +19,7 @@ extension ContentView {
                 questionTotal: quiz.questions.count,
                 linkedContext: quiz.promptLinkContext(for: quiz.questions[selectedIndex], frameworks: frameworkStore.frameworks),
                 persona: activePersona,
+                kind: quiz.kind,
                 onPreview: {
                     previewScopedToQuestion = true
                     isPreviewPresented = true

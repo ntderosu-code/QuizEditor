@@ -813,12 +813,12 @@ public struct QTIExporter: Sendable {
     }
 
     private func formatPoints(_ points: Double) -> String {
-        points.rounded() == points ? String(Int(points)) : String(points)
+        formatQTINumber(points)
     }
 
     /// Formats a numeric answer/bound, dropping a trailing ".0" for whole numbers.
     private func formatNumber(_ value: Double) -> String {
-        value.rounded() == value ? String(Int(value)) : String(value)
+        formatQTINumber(value)
     }
 
     /// The only per-item metadata the package carries: the formula spec.
@@ -848,6 +848,14 @@ public struct QTIExporter: Sendable {
         }
         return fields.joined()
     }
+}
+
+/// Whole numbers print without a trailing ".0", which keeps the emitted XML
+/// readable. `Int(_:)` traps on non-finite values and on magnitudes outside
+/// Int's range, so both fall back to `String(Double)`.
+func formatQTINumber(_ value: Double) -> String {
+    let isIntSafeWholeNumber = value.isFinite && abs(value) < 9e15 && value.rounded() == value
+    return isIntSafeWholeNumber ? String(Int(value)) : String(value)
 }
 
 func xmlEscape(_ value: String) -> String {

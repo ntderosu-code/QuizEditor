@@ -298,6 +298,60 @@ final class QTIExporterTests: XCTestCase {
         XCTAssertEqual(formula.computedValue, 14)
     }
 
+    func testFormulaWithNonFiniteResultIsUnconfigured() {
+        // Dividing by a zero-valued variable yields infinity. A non-finite result
+        // is not a usable answer key, and the whole-number formatters would trap
+        // converting it to Int, so the evaluator rejects it up front.
+        let divideByZero = FormulaAnswer(
+            variables: [FormulaVariable(name: "a", value: 1), FormulaVariable(name: "b", value: 0)],
+            expression: "a / b"
+        )
+        XCTAssertNil(divideByZero.computedValue)
+
+        let zeroOverZero = FormulaAnswer(
+            variables: [FormulaVariable(name: "a", value: 0), FormulaVariable(name: "b", value: 0)],
+            expression: "a / b"
+        )
+        XCTAssertNil(zeroOverZero.computedValue)
+    }
+
+    func testExportsFormulaWithNonFiniteResultWithoutCrashing() throws {
+        let quiz = Quiz(title: "Divide", questions: [
+            QuizQuestion(
+                type: .formula,
+                prompt: "Compute a / b.",
+                formula: FormulaAnswer(
+                    variables: [FormulaVariable(name: "a", value: 1), FormulaVariable(name: "b", value: 0)],
+                    expression: "a / b"
+                )
+            )
+        ])
+        for target in QTIExportTarget.allCases {
+            let package = try QTIExporter(target: target).makePackage(for: quiz)
+            XCTAssertFalse(package.files.isEmpty, "\(target) produced no files")
+        }
+    }
+
+    func testExportsVeryLargeNumericAnswerWithoutCrashing() throws {
+        // A magnitude beyond Int's range must not take the whole-number path;
+        // Int(1e30) traps.
+        let quiz = Quiz(title: "Astronomy", questions: [
+            QuizQuestion(
+                type: .numeric,
+                prompt: "How many atoms?",
+                numeric: NumericAnswer(mode: .exact, value: 1e30)
+            )
+        ])
+        for target in QTIExportTarget.allCases {
+            let package = try QTIExporter(target: target).makePackage(for: quiz)
+            let item = try XCTUnwrap(package.file(named: "items/question-1.xml")).contents
+            // A survey strips scoring, so only the graded targets carry the value.
+            if target != .qti12Survey {
+                XCTAssertTrue(item.contains("1e+30"), "\(target) did not write the large value")
+            }
+        }
+    }
+
     // MARK: - Author metadata is never exported (formula + file upload + survey)
 
     func testFormulaExpectedUnitIsNeverExported() throws {
