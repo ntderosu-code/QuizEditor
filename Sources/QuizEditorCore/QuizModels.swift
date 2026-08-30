@@ -1,5 +1,22 @@
 import Foundation
 
+/// Whether the quiz is graded (questions are scored) or a survey (responses are
+/// collected, never scored). Affects export shape (surveys strip `resprocessing`)
+/// and which linter rules apply (answer-key rules are skipped for surveys).
+public enum QuizKind: String, CaseIterable, Codable, Identifiable, Sendable {
+    case graded
+    case survey
+
+    public var id: String { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .graded: "Graded Quiz"
+        case .survey: "Survey"
+        }
+    }
+}
+
 public struct Quiz: Equatable, Codable, Identifiable, Sendable {
     public var id: UUID
     public var title: String
@@ -13,6 +30,9 @@ public struct Quiz: Equatable, Codable, Identifiable, Sendable {
     public var objectives: [LearningObjective]
     public var stimuli: [Stimulus]
     public var sources: [Source]
+    /// Whether the quiz is graded or a survey. Decoded tolerantly: quizzes saved
+    /// before this field existed open as `.graded`.
+    public var kind: QuizKind
 
     public init(
         id: UUID = UUID(),
@@ -21,7 +41,8 @@ public struct Quiz: Equatable, Codable, Identifiable, Sendable {
         personaID: String? = nil,
         objectives: [LearningObjective] = [],
         stimuli: [Stimulus] = [],
-        sources: [Source] = []
+        sources: [Source] = [],
+        kind: QuizKind = .graded
     ) {
         self.id = id
         self.title = title
@@ -30,10 +51,11 @@ public struct Quiz: Equatable, Codable, Identifiable, Sendable {
         self.objectives = objectives
         self.stimuli = stimuli
         self.sources = sources
+        self.kind = kind
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, title, questions, personaID, objectives, stimuli, sources
+        case id, title, questions, personaID, objectives, stimuli, sources, kind
     }
 
     // Decodes tolerantly so quizzes saved before linking existed still open: a
@@ -47,6 +69,7 @@ public struct Quiz: Equatable, Codable, Identifiable, Sendable {
         objectives = try container.decodeIfPresent([LearningObjective].self, forKey: .objectives) ?? []
         stimuli = try container.decodeIfPresent([Stimulus].self, forKey: .stimuli) ?? []
         sources = try container.decodeIfPresent([Source].self, forKey: .sources) ?? []
+        kind = try container.decodeIfPresent(QuizKind.self, forKey: .kind) ?? .graded
     }
 
     public static let sample = Quiz(
@@ -97,6 +120,12 @@ public struct QuizQuestion: Equatable, Codable, Identifiable, Sendable {
     public var stimulusID: String?
     /// Grading spec for a `.numeric` question; nil for every other type.
     public var numeric: NumericAnswer?
+    /// Grading spec for a `.formula` question; nil for every other type.
+    public var formula: FormulaAnswer?
+    /// Optional MIME-type allowlist for `.fileUpload` questions; nil/empty means
+    /// any type. Author metadata — never exported (Canvas defaults to "any file"
+    /// when this is absent).
+    public var allowedFileTypes: [String]
 
     public init(
         id: UUID = UUID(),
@@ -112,7 +141,9 @@ public struct QuizQuestion: Equatable, Codable, Identifiable, Sendable {
         competencyIDs: [String] = [],
         sourceIDs: [String] = [],
         stimulusID: String? = nil,
-        numeric: NumericAnswer? = nil
+        numeric: NumericAnswer? = nil,
+        formula: FormulaAnswer? = nil,
+        allowedFileTypes: [String] = []
     ) {
         self.id = id
         self.type = type
@@ -128,11 +159,13 @@ public struct QuizQuestion: Equatable, Codable, Identifiable, Sendable {
         self.sourceIDs = sourceIDs
         self.stimulusID = stimulusID
         self.numeric = numeric
+        self.formula = formula
+        self.allowedFileTypes = allowedFileTypes
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, type, prompt, answers, matches, feedback, points, tags, difficulty
-        case objectiveIDs, competencyIDs, sourceIDs, stimulusID, numeric
+        case objectiveIDs, competencyIDs, sourceIDs, stimulusID, numeric, formula, allowedFileTypes
     }
 
     // Decodes tolerantly so quizzes saved before metadata existed still open:
@@ -153,6 +186,8 @@ public struct QuizQuestion: Equatable, Codable, Identifiable, Sendable {
         sourceIDs = try container.decodeIfPresent([String].self, forKey: .sourceIDs) ?? []
         stimulusID = try container.decodeIfPresent(String.self, forKey: .stimulusID)
         numeric = try container.decodeIfPresent(NumericAnswer.self, forKey: .numeric)
+        formula = try container.decodeIfPresent(FormulaAnswer.self, forKey: .formula)
+        allowedFileTypes = try container.decodeIfPresent([String].self, forKey: .allowedFileTypes) ?? []
     }
 }
 
@@ -181,6 +216,14 @@ public enum QuizQuestionType: String, CaseIterable, Codable, Identifiable, Senda
     case essay
     case matching
     case numeric
+    /// Student uploads a file. Scored manually (or by rubric) in Canvas; the
+    /// package carries the question stem and the accepted MIME types.
+    case fileUpload
+    /// Computed answer: the author supplies variables, an arithmetic expression,
+    /// and a tolerance. Canvas calls this `calculated_question` (Classic) and
+    /// the QTI 2.1 community calls it `formula_question`; the canonical name in
+    /// our model is `.formula` for clarity.
+    case formula
 
     public var id: String { rawValue }
 
@@ -194,6 +237,8 @@ public enum QuizQuestionType: String, CaseIterable, Codable, Identifiable, Senda
         case .essay: "Essay"
         case .matching: "Matching"
         case .numeric: "Numeric"
+        case .fileUpload: "File Upload"
+        case .formula: "Formula"
         }
     }
 
@@ -207,6 +252,8 @@ public enum QuizQuestionType: String, CaseIterable, Codable, Identifiable, Senda
         case .essay: "essay_question"
         case .matching: "matching_question"
         case .numeric: "numerical_question"
+        case .fileUpload: "file_upload_question"
+        case .formula: "calculated_question"
         }
     }
 }

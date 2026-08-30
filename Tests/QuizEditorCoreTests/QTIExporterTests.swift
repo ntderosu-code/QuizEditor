@@ -119,4 +119,161 @@ final class QTIExporterTests: XCTestCase {
         XCTAssertEqual(Array(zipData.prefix(2)), [0x50, 0x4B])
         XCTAssertGreaterThan(zipData.count, 100)
     }
+
+    // MARK: - Surveys
+
+    func testSurveyEngineStripsResponseProcessingAndPoints() throws {
+        // A survey has no correct answers and no points; the package must omit
+        // both `points_possible` and any `<resprocessing>` block.
+        let quiz = Quiz(
+            title: "Mid-semester feedback",
+            questions: [
+                QuizQuestion(
+                    type: .multipleChoice,
+                    prompt: "How is the pace?",
+                    answers: [QuizAnswer(text: "Just right"), QuizAnswer(text: "Too fast"), QuizAnswer(text: "Too slow")],
+                    points: 1
+                )
+            ],
+            kind: .survey
+        )
+
+        let package = try CanvasQTIExporter(engine: .surveys).makePackage(for: quiz)
+        let item = try XCTUnwrap(package.file(named: "items/question-1.xml")).contents
+
+        XCTAssertTrue(item.contains("multiple_choice_question"))
+        XCTAssertFalse(item.contains("points_possible"), "Surveys must not carry a points_possible field")
+        XCTAssertFalse(item.contains("<resprocessing>"), "Surveys must not include resprocessing")
+        XCTAssertFalse(item.contains("respcondition"), "Surveys must not score answers")
+    }
+
+    func testGradedQuizExportedAsSurveyEngineAlsoStripsScoring() throws {
+        // Forcing the .surveys engine produces an ungraded package even when
+        // the quiz is .graded — useful for one-off survey exports.
+        let quiz = Quiz(title: "Graded content", questions: [
+            QuizQuestion(type: .multipleChoice, prompt: "Pick A", answers: [QuizAnswer(text: "A", isCorrect: true)])
+        ])
+
+        let package = try CanvasQTIExporter(engine: .surveys).makePackage(for: quiz)
+        let item = try XCTUnwrap(package.file(named: "items/question-1.xml")).contents
+
+        XCTAssertFalse(item.contains("<resprocessing>"))
+        XCTAssertFalse(item.contains("points_possible"))
+    }
+
+    // MARK: - File upload + formula
+
+    func testFileUploadQuestionRendersWithUploadInteraction() throws {
+        let question = QuizQuestion(
+            type: .fileUpload,
+            prompt: "Upload your essay.",
+            answers: [],
+            allowedFileTypes: ["application/pdf", "image/png"]
+        )
+        let quiz = Quiz(title: "File upload", questions: [question])
+
+        let classic = try CanvasQTIExporter(engine: .classicQuizzes).makePackage(for: quiz)
+        let classicItem = try XCTUnwrap(classic.file(named: "items/question-1.xml")).contents
+        XCTAssertTrue(classicItem.contains("file_upload_question"))
+        XCTAssertTrue(classicItem.contains("response_str"), "Classic file uploads use response_str type=file")
+        XCTAssertTrue(classicItem.contains("fibtype=\"File\""))
+        XCTAssertTrue(classicItem.contains("application/pdf"))
+
+        let newQ = try CanvasQTIExporter(engine: .newQuizzes).makePackage(for: quiz)
+        let newItem = try XCTUnwrap(newQ.file(named: "items/question-1.xml")).contents
+        XCTAssertTrue(newItem.contains("uploadInteraction"))
+        XCTAssertTrue(newItem.contains("expectedMimeTypes"))
+        XCTAssertTrue(newItem.contains("application/pdf"))
+    }
+
+    func testFileUploadMimeListStaysOutWhenEmpty() throws {
+        let question = QuizQuestion(type: .fileUpload, prompt: "Upload anything.")
+        let quiz = Quiz(title: "T", questions: [question])
+        let package = try CanvasQTIExporter(engine: .newQuizzes).makePackage(for: quiz)
+        let item = try XCTUnwrap(package.file(named: "items/question-1.xml")).contents
+        XCTAssertTrue(item.contains("uploadInteraction"))
+        XCTAssertFalse(item.contains("expectedMimeTypes"))
+    }
+
+    func testFormulaQuestionRendersExpressionAndVariablesInClassicMetadata() throws {
+        let formula = FormulaAnswer(
+            variables: [FormulaVariable(name: "m", value: 2), FormulaVariable(name: "a", value: 9.8)],
+            expression: "m * a",
+            tolerance: 0.01
+        )
+        let question = QuizQuestion(
+            type: .formula,
+            prompt: "Compute F.",
+            answers: [],
+            formula: formula
+        )
+        let quiz = Quiz(title: "Physics", questions: [question])
+
+        let package = try CanvasQTIExporter(engine: .classicQuizzes).makePackage(for: quiz)
+        let item = try XCTUnwrap(package.file(named: "items/question-1.xml")).contents
+
+        XCTAssertTrue(item.contains("calculated_question"))
+        XCTAssertTrue(item.contains("formula_question"))
+        XCTAssertTrue(item.contains("m * a"))
+        XCTAssertTrue(item.contains("<variable name=\"m\">2</variable>"))
+        XCTAssertTrue(item.contains("<variable name=\"a\">9.8</variable>"))
+        // The precomputed value (2 * 9.8 = 19.6) and tolerance (±0.01) live in the
+        // answer key, which Canvas uses to score typed numeric answers.
+        XCTAssertTrue(item.contains("19.6"))
+    }
+
+    func testFormulaQuestionRendersInQTI21() throws {
+        let formula = FormulaAnswer(
+            variables: [FormulaVariable(name: "x", value: 5), FormulaVariable(name: "y", value: 3)],
+            expression: "(x + y) * 2"
+        )
+        let question = QuizQuestion(type: .formula, prompt: "Compute.", formula: formula)
+        let quiz = Quiz(title: "T", questions: [question])
+
+        let package = try CanvasQTIExporter(engine: .newQuizzes).makePackage(for: quiz)
+        let item = try XCTUnwrap(package.file(named: "items/question-1.xml")).contents
+
+        XCTAssertTrue(item.contains("assessmentItem"))
+        XCTAssertTrue(item.contains("textEntryInteraction"))
+        // (5 + 3) * 2 = 16
+        XCTAssertTrue(item.contains("<value>16</value>"))
+    }
+
+    func testFormulaEvaluatorComputesRepresentativeValue() {
+        let formula = FormulaAnswer(
+            variables: [FormulaVariable(name: "a", value: 3), FormulaVariable(name: "b", value: 4)],
+            expression: "(a + b) * 2"
+        )
+        XCTAssertEqual(formula.computedValue, 14)
+    }
+
+    // MARK: - Author metadata is never exported (formula + file upload + survey)
+
+    func testFormulaExpectedUnitIsNeverExported() throws {
+        // expectedUnit is tool-only — it must not leak into the QTI package.
+        let formula = FormulaAnswer(
+            variables: [FormulaVariable(name: "m", value: 2)],
+            expression: "m * 9.8",
+            expectedUnit: "NEWTON_TOKEN"
+        )
+        let quiz = Quiz(title: "Physics", questions: [
+            QuizQuestion(type: .formula, prompt: "F = ?", formula: formula)
+        ])
+        let package = try CanvasQTIExporter().makePackage(for: quiz)
+        let everything = package.files.map(\.contents).joined(separator: "\n")
+        XCTAssertFalse(everything.contains("NEWTON_TOKEN"))
+    }
+
+    func testAllowedFileTypesRoundTripThroughCoding() throws {
+        // Allowed file types are exported (Canvas reads them); the test just
+        // confirms a list of two is preserved.
+        let question = QuizQuestion(
+            type: .fileUpload,
+            prompt: "Upload.",
+            allowedFileTypes: ["application/pdf", "text/plain"]
+        )
+        let data = try JSONEncoder().encode(question)
+        let decoded = try JSONDecoder().decode(QuizQuestion.self, from: data)
+        XCTAssertEqual(decoded.allowedFileTypes, ["application/pdf", "text/plain"])
+    }
 }

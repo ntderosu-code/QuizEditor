@@ -296,4 +296,165 @@ final class QTIImporterTests: XCTestCase {
         let sections = try QTIImporter().importSections(fromDirectory: directory)
         return try XCTUnwrap(sections.first?.questions.first)
     }
+
+    // MARK: - New question types
+
+    func testImportsFileUploadQuestionWithMimeAllowList() throws {
+        let prompt = "Upload your essay"
+        let item = """
+        <item ident="q1" title="q1">
+          <itemmetadata><qtimetadata>
+            <qtimetadatafield><fieldlabel>question_type</fieldlabel><fieldentry>file_upload_question</fieldentry></qtimetadatafield>
+          </qtimetadata></itemmetadata>
+          <presentation>
+            <material><mattext texttype="text/html">\(prompt)</mattext></material>
+            <response_str ident="response1" rcardinality="Single" type="file">
+              <render_fib fibtype="File" prompt="Upload" rows="1" columns="40" mimetype="application/pdf text/plain"/>
+            </response_str>
+          </presentation>
+        </item>
+        """
+        let question = try importClassicItem(item)
+        XCTAssertEqual(question.type, .fileUpload)
+        XCTAssertEqual(question.prompt, prompt)
+        XCTAssertEqual(question.allowedFileTypes, ["application/pdf", "text/plain"])
+    }
+
+    func testImportsFormulaQuestionFromClassicMetadata() throws {
+        let item = """
+        <item ident="q1" title="q1">
+          <itemmetadata><qtimetadata>
+            <qtimetadatafield><fieldlabel>question_type</fieldlabel><fieldentry>calculated_question</fieldentry></qtimetadatafield>
+            <qtimetadatafield>
+              <fieldlabel>formula_question</fieldlabel>
+              <fieldentry><formula>m * a<variables><variable name="m">2</variable><variable name="a">9.8</variable></variables></formula></fieldentry>
+            </qtimetadatafield>
+          </qtimetadata></itemmetadata>
+          <presentation>
+            <material><mattext texttype="text/html">Compute F.</mattext></material>
+            <response_str ident="response1" rcardinality="Single">
+              <render_fib fibtype="Decimal" prompt="Box" rows="1" columns="20"/>
+            </response_str>
+          </presentation>
+        </item>
+        """
+        let question = try importClassicItem(item)
+        XCTAssertEqual(question.type, .formula)
+        XCTAssertEqual(question.formula?.expression, "m * a")
+        XCTAssertEqual(question.formula?.variables.count, 2)
+        XCTAssertEqual(question.formula?.variables.first?.name, "m")
+        XCTAssertEqual(question.formula?.computedValue, 19.6)
+    }
+
+    func testRecognizesFormulaQTI21Type() throws {
+        // The QTI 2.1 / New Quizzes community calls these `formula_question` —
+        // the importer should map it to .formula too.
+        let item = """
+        <item ident="q1" title="q1">
+          <itemmetadata><qtimetadata>
+            <qtimetadatafield><fieldlabel>question_type</fieldlabel><fieldentry>formula_question</fieldentry></qtimetadatafield>
+          </qtimetadata></itemmetadata>
+          <presentation>
+            <material><mattext texttype="text/html">f(x)</mattext></material>
+            <response_str ident="response1" rcardinality="Single">
+              <render_fib fibtype="Decimal" prompt="Box" rows="1" columns="20"/>
+            </response_str>
+          </presentation>
+        </item>
+        """
+        let question = try importClassicItem(item)
+        XCTAssertEqual(question.type, .formula)
+    }
+
+    // MARK: - Survey detection
+
+    func testDetectsSurveyWhenNoScoringOrPoints() throws {
+        // Surveys: no `points_possible`, no `<resprocessing>`, no respcondition.
+        let manifest = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <manifest identifier="m" xmlns="http://www.imsglobal.org/xsd/imscp_v1p1">
+          <resources>
+            <resource identifier="q" type="imsqti_xmlv1p2" href="assessment.xml">
+              <file href="assessment.xml"/>
+            </resource>
+          </resources>
+        </manifest>
+        """
+        let assessment = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <questestinterop>
+          <assessment ident="a" title="Course eval">
+            <section ident="root">
+              <item ident="q1" title="q1">
+                <itemmetadata><qtimetadata>
+                  <qtimetadatafield><fieldlabel>question_type</fieldlabel><fieldentry>multiple_choice_question</fieldentry></qtimetadatafield>
+                </qtimetadata></itemmetadata>
+                <presentation>
+                  <material><mattext texttype="text/html">Pace?</mattext></material>
+                  <response_lid ident="response1" rcardinality="Single">
+                    <render_choice>
+                      <response_label ident="a"><material><mattext texttype="text/html">Just right</mattext></material></response_label>
+                      <response_label ident="b"><material><mattext texttype="text/html">Too fast</mattext></material></response_label>
+                    </render_choice>
+                  </response_lid>
+                </presentation>
+              </item>
+            </section>
+          </assessment>
+        </questestinterop>
+        """
+        let dir = try writePackage(manifest: manifest, files: [("assessment.xml", assessment)])
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let quiz = try QTIImporter().importQuiz(fromDirectory: dir)
+        XCTAssertEqual(quiz.kind, .survey)
+    }
+
+    func testDetectsGradedWhenPointsOrScoringPresent() throws {
+        let xml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <questestinterop>
+          <assessment ident="a" title="Quiz">
+            <qtimetadata><qtimetadatafield>
+              <fieldlabel>cc_maxattempts</fieldlabel><fieldentry>1</fieldentry>
+            </qtimetadatafield></qtimetadata>
+            <section ident="root">
+              <item ident="q1" title="q1">
+                <itemmetadata><qtimetadata>
+                  <qtimetadatafield><fieldlabel>question_type</fieldlabel><fieldentry>multiple_choice_question</fieldentry></qtimetadatafield>
+                  <qtimetadatafield><fieldlabel>points_possible</fieldlabel><fieldentry>1</fieldentry></qtimetadatafield>
+                </qtimetadata></itemmetadata>
+                <presentation>
+                  <material><mattext texttype="text/html">?</mattext></material>
+                  <response_lid ident="response1" rcardinality="Single">
+                    <render_choice>
+                      <response_label ident="a"><material><mattext texttype="text/html">A</mattext></material></response_label>
+                    </render_choice>
+                  </response_lid>
+                </presentation>
+                <resprocessing>
+                  <outcomes><decvar/></outcomes>
+                  <respcondition><conditionvar><varequal respident="response1">a</varequal></conditionvar></respcondition>
+                </resprocessing>
+              </item>
+            </section>
+          </assessment>
+        </questestinterop>
+        """
+        let dir = try writePackage(manifest: "<?xml version=\"1.0\"?><manifest><resources><resource identifier=\"q\" type=\"imsqti_xmlv1p2\" href=\"assessment.xml\"><file href=\"assessment.xml\"/></resource></resources></manifest>", files: [("assessment.xml", xml)])
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let quiz = try QTIImporter().importQuiz(fromDirectory: dir)
+        XCTAssertEqual(quiz.kind, .graded)
+    }
+
+    private func writePackage(manifest: String, files: [(String, String)]) throws -> URL {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try manifest.write(to: dir.appendingPathComponent("imsmanifest.xml"), atomically: true, encoding: .utf8)
+        for (name, contents) in files {
+            try contents.write(to: dir.appendingPathComponent(name), atomically: true, encoding: .utf8)
+        }
+        return dir
+    }
 }

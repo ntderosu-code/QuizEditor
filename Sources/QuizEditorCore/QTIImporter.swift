@@ -86,7 +86,25 @@ public struct QTIImporter: Sendable {
         }
 
         guard !questions.isEmpty else { throw ImportError.noQuestionsFound }
-        return Quiz(title: title.isEmpty ? "Imported Quiz" : title, questions: questions)
+        let kind = detectSurvey(in: assessment, questions: questions) ? QuizKind.survey : .graded
+        return Quiz(title: title.isEmpty ? "Imported Quiz" : title, questions: questions, kind: kind)
+    }
+
+    /// A QTI 1.2 assessment is a survey when nothing in the package scores
+    /// anything: no `points_possible` per item, and no `<resprocessing>` block
+    /// anywhere. New Quizzes assessments use the same heuristic — surveys
+    /// export with no outcomeDeclaration and per-item response processing is
+    /// empty.
+    ///
+    /// The check operates on the raw assessment XML, not the parsed model, so
+    /// the per-question default `points: 1` doesn't cause every quiz to look
+    /// graded. The first question's `points_possible` qtimetadata field is the
+    /// authoritative Canvas signal.
+    private func detectSurvey(in assessment: String, questions: [QuizQuestion]) -> Bool {
+        let hasPoints = assessment.contains("points_possible")
+        let hasScoring = assessment.contains("<resprocessing>")
+            || assessment.contains("respcondition")
+        return !hasPoints && !hasScoring && !questions.isEmpty
     }
 
     /// Imports every quiz and item bank from an IMS Common Cartridge (`.imscc`)
@@ -237,6 +255,19 @@ public struct QTIImporter: Sendable {
             return QuizQuestion(type: .numeric, prompt: prompt, feedback: classicFeedback(in: xml), numeric: parseClassicNumeric(in: xml))
         }
 
+        if type == .formula {
+            return QuizQuestion(type: .formula, prompt: prompt, feedback: classicFeedback(in: xml), formula: parseClassicFormula(in: xml))
+        }
+
+        if type == .fileUpload {
+            return QuizQuestion(
+                type: .fileUpload,
+                prompt: prompt,
+                feedback: classicFeedback(in: xml),
+                allowedFileTypes: parseClassicFileUploadMimes(in: xml)
+            )
+        }
+
         let correctIDs = Set(matches(pattern: #"<varequal[^>]*>([^<]+)</varequal>"#, in: xml))
         let answers = matches(pattern: #"<response_label\s+ident=\"([^\"]+)\"[^>]*>[\s\S]*?<mattext[^>]*>([\s\S]*?)</mattext>"#, in: xml, groupCount: 2)
             .map { QuizAnswer(text: renderField($0[1]), isCorrect: correctIDs.contains($0[0])) }
@@ -259,6 +290,39 @@ public struct QTIImporter: Sendable {
             return QuizQuestion(type: .matching, prompt: prompt, matches: pairs, feedback: qti21Feedback(in: xml))
         }
 
+        if xml.contains("uploadInteraction") {
+            let mimes = matches(pattern: #"expectedMimeTypes=\"([^\"]+)\""#, in: xml)
+                .first?
+                .split(separator: ",")
+                .map { String($0).trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty } ?? []
+            return QuizQuestion(type: .fileUpload, prompt: prompt, feedback: qti21Feedback(in: xml), allowedFileTypes: Array(mimes))
+        }
+
+        // Formula items in QTI 2.1 look like numeric items with a `formula`
+        // responseProcessing template. We don't try to round-trip the expression
+        // here — there's no canonical place for it in 2.1 — but we recover the
+        // computed answer and treat the item as a numeric with no spec. A
+        // round-trip would lose the formula, which is acceptable since most
+        // authors re-author formula questions rather than re-import them.
+        if let formulaTemplate = firstMatch(pattern: #"template=\"http://www\.imsglobal\.org/question/qti_v2p1/rptemplates/(formula|match_correct)\""#, in: xml),
+           formulaTemplate.contains("formula"),
+           xml.contains("textEntryInteraction") {
+            let value = matches(pattern: #"<correctResponse>[\s\S]*?<value>([^<]+)</value>"#, in: xml)
+                .first
+                .flatMap { Double($0.trimmingCharacters(in: .whitespaces)) }
+            return QuizQuestion(
+                type: .formula,
+                prompt: prompt,
+                feedback: qti21Feedback(in: xml),
+                formula: FormulaAnswer(
+                    expression: "",
+                    tolerance: 0,
+                    expectedUnit: nil
+                ).withComputedValue(value)
+            )
+        }
+
         let correctResponse = matches(pattern: #"<correctResponse>([\s\S]*?)</correctResponse>"#, in: xml).first ?? ""
         let correctIDs = Set(matches(pattern: #"<value>([^<]+)</value>"#, in: correctResponse))
         let choices = matches(pattern: #"<simpleChoice\s+identifier=\"([^\"]+)\"[^>]*>([\s\S]*?)</simpleChoice>"#, in: xml, groupCount: 2)
@@ -277,6 +341,8 @@ public struct QTIImporter: Sendable {
         case "essay_question": return .essay
         case "matching_question": return .matching
         case "numerical_question": return .numeric
+        case "file_upload_question": return .fileUpload
+        case "calculated_question", "formula_question": return .formula
         default: return .multipleChoice
         }
     }
@@ -294,8 +360,36 @@ public struct QTIImporter: Sendable {
         return NumericAnswer()
     }
 
+    /// Recovers a formula spec from the `formula_question` qtimetadata field
+    /// emitted by the exporter. The expression and variable list are carried in
+    /// an embedded `<formula>` element.
+    private func parseClassicFormula(in xml: String) -> FormulaAnswer? {
+        let entry = firstFieldEntry(afterFieldLabel: "formula_question", in: xml) ?? ""
+        guard !entry.isEmpty else { return nil }
+        let expression = matches(pattern: #"<formula>([\s\S]*?)<variables>"#, in: entry).first?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let variables = matches(pattern: #"<variable\s+name=\"([^\"]+)\">([^<]+)</variable>"#, in: entry, groupCount: 2)
+            .compactMap { pair -> FormulaVariable? in
+                guard let value = Double(pair[1].trimmingCharacters(in: .whitespaces)) else { return nil }
+                return FormulaVariable(name: pair[0], value: value)
+            }
+        guard !expression.isEmpty || !variables.isEmpty else { return nil }
+        return FormulaAnswer(variables: variables, expression: expression)
+    }
+
+    private func parseClassicFileUploadMimes(in xml: String) -> [String] {
+        let raw = matches(pattern: #"mimetype=\"([^\"]*)\""#, in: xml).first ?? ""
+        return raw
+            .split(separator: " ")
+            .map { String($0).trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+    }
+
     private func firstFieldEntry(afterFieldLabel label: String, in xml: String) -> String? {
-        let pattern = #"<fieldlabel>\#(label)</fieldlabel>\s*<fieldentry>([^<]+)</fieldentry>"#
+        // Most field entries are plain text; the formula_question entry carries
+        // embedded XML (`<formula>…<variables>…</variables></formula>`), so we
+        // match lazily up to the next `</fieldentry>` rather than the first `<`.
+        let pattern = #"<fieldlabel>\#(label)</fieldlabel>\s*<fieldentry>([\s\S]*?)</fieldentry>"#
         return matches(pattern: pattern, in: xml).first
     }
 
@@ -309,6 +403,17 @@ public struct QTIImporter: Sendable {
 
     private func attribute(_ name: String, in xml: String) -> String? {
         matches(pattern: #"\#(name)\s*=\s*\"([^\"]*)\""#, in: xml).first
+    }
+
+    /// Returns the first full match (group 0) of a regex against the given XML,
+    /// or `nil` if there is no match. Used to detect optional elements like
+    /// formula response templates where a single substring test isn't enough.
+    private func firstMatch(pattern: String, in xml: String) -> String? {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators]) else { return nil }
+        let range = NSRange(xml.startIndex..<xml.endIndex, in: xml)
+        guard let match = regex.firstMatch(in: xml, range: range),
+              let range = Range(match.range, in: xml) else { return nil }
+        return String(xml[range])
     }
 
     /// Rebuilds a classic matching item's prompt/match pairs. Canvas lists every

@@ -122,12 +122,14 @@ public struct PaperExamBuilder: Sendable {
         switch question.type {
         case .multipleChoice, .multipleAnswer, .trueFalse:
             parts.append(choiceBlock(question, options: options))
-        case .shortAnswer, .fillInBlank, .numeric:
+        case .shortAnswer, .fillInBlank, .numeric, .formula:
             parts.append(writeInBlock(question, options: options, lines: 1))
         case .essay:
             parts.append(essayBlock())
         case .matching:
             parts.append(matchingBlock(question, options: options))
+        case .fileUpload:
+            parts.append(fileUploadBlock(question, options: options))
         }
 
         if options.includeAnswerKey {
@@ -153,11 +155,28 @@ public struct PaperExamBuilder: Sendable {
 
     private func writeInBlock(_ question: QuizQuestion, options: PaperExamOptions, lines: Int) -> String {
         if options.includeAnswerKey {
+            if let formula = question.formula, question.type == .formula {
+                let computed = formula.computedValue.map { formatPoints($0) } ?? "(expression can't be evaluated)"
+                let unit = formula.expectedUnit.map { " \($0)" } ?? ""
+                return "<div class=\"key-answer\"><span class=\"klabel\">Answer:</span> \(computed)\(unit) (from \(escape(formula.expression)))</div>"
+            }
             let accepted = question.answers.map { escape($0.text) }.filter { !$0.isEmpty }
             let answerText = accepted.isEmpty ? "(no accepted answer provided)" : accepted.joined(separator: " / ")
             return "<div class=\"key-answer\"><span class=\"klabel\">Answer:</span> \(answerText)</div>"
         }
         return "<div class=\"writein\"></div>"
+    }
+
+    /// File upload question on a paper exam: a labeled dashed box where the
+    /// student writes "see attached", since they can't actually upload a file.
+    /// On the answer key we list any MIME types the author constrained.
+    private func fileUploadBlock(_ question: QuizQuestion, options: PaperExamOptions) -> String {
+        if options.includeAnswerKey {
+            let allowed = question.allowedFileTypes.filter { !$0.isEmpty }
+            let suffix = allowed.isEmpty ? "" : "<div class=\"key-answer\"><span class=\"klabel\">Allowed types:</span> \(allowed.map(escape).joined(separator: ", "))</div>"
+            return "<div class=\"writein upload-box\"><span class=\"upload-label\">Attach your file:</span></div>\(suffix)"
+        }
+        return "<div class=\"writein upload-box\"><span class=\"upload-label\">Attach your file:</span></div>"
     }
 
     private func essayBlock() -> String {
@@ -238,6 +257,8 @@ public struct PaperExamBuilder: Sendable {
           .bubble.filled { background: #000; }
           .letter { font-weight: 600; }
           .writein { border-bottom: 1px solid #000; height: 2.2em; margin: 6px 0 0 28px; }
+          .writein.upload-box { border: 1px dashed #000; height: 3.6em; display: flex; align-items: center; padding: 0 8px; }
+          .upload-label { font-family: -apple-system, system-ui, sans-serif; font-size: 0.85rem; color: #444; }
           .essay-space { border: 1px solid #aaa; border-radius: 4px; height: 150px; margin: 8px 0 0;
             background-image: repeating-linear-gradient(#fff, #fff 26px, #ddd 27px); }
           .matching { display: flex; flex-wrap: wrap; gap: 12px 32px; margin: 6px 0 0 28px; }

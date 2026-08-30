@@ -84,6 +84,13 @@ struct SidebarView: View {
                 TextField("Quiz title", text: $quiz.title)
                     .textFieldStyle(.roundedBorder)
                     .accessibilityLabel("Quiz title")
+                Picker("Quiz kind", selection: $quiz.kind) {
+                    ForEach(QuizKind.allCases) { kind in
+                        Text(kind.displayName).tag(kind)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .accessibilityLabel("Quiz kind (graded or survey)")
             }
 
             Section("Questions") {

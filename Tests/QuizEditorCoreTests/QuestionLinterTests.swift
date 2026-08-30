@@ -212,4 +212,46 @@ final class QuestionLinterTests: XCTestCase {
         XCTAssertNil(byQuestion[clean.id])
         XCTAssertNotNil(byQuestion[broken.id])
     }
+
+    // MARK: - Survey kind
+
+    func testSurveySkipsAnswerKeyAndMissingFeedbackRules() {
+        // The same question that would flag three rules as a graded quiz must
+        // not flag any of them as a survey, because a survey has no answer key
+        // to mark and no per-question feedback to write.
+        let question = QuizQuestion(
+            type: .multipleChoice,
+            prompt: "Pace?",
+            answers: [
+                QuizAnswer(text: "Just right"),
+                QuizAnswer(text: "Too fast")
+            ]
+            // no correct marks, no feedback — both would flag a graded quiz
+        )
+
+        let gradedRules = rules(linter.findings(for: question, persona: .general))
+        XCTAssertTrue(gradedRules.contains(.noCorrectAnswer))
+        XCTAssertTrue(gradedRules.contains(.missingFeedback))
+
+        let surveyRules = rules(linter.findings(for: question, persona: .general, kind: .survey))
+        XCTAssertFalse(surveyRules.contains(.noCorrectAnswer), "Surveys shouldn't flag noCorrectAnswer")
+        XCTAssertFalse(surveyRules.contains(.missingFeedback), "Surveys shouldn't flag missingFeedback")
+    }
+
+    func testSurveyStillFlagsDistractorIssues() {
+        // Distractor quality rules (empty option, duplicate options) still apply
+        // to surveys — a survey can have bad questions too, even if no scoring.
+        let question = QuizQuestion(
+            type: .multipleChoice,
+            prompt: "Pick",
+            answers: [
+                QuizAnswer(text: "A"),
+                QuizAnswer(text: ""),
+                QuizAnswer(text: "A")
+            ]
+        )
+        let surveyRules = rules(linter.findings(for: question, persona: .general, kind: .survey))
+        XCTAssertTrue(surveyRules.contains(.emptyOption))
+        XCTAssertTrue(surveyRules.contains(.duplicateOptions))
+    }
 }

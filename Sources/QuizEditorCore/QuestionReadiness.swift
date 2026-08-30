@@ -85,10 +85,12 @@ public struct QuestionReadiness: Equatable, Sendable {
             checks += acceptedAnswerChecks(question)
         case .numeric:
             checks.append(numericCheck(question))
+        case .formula:
+            checks.append(formulaCheck(question))
         case .matching:
             checks += matchingChecks(question)
-        case .essay:
-            break // open response: no answer key
+        case .essay, .fileUpload:
+            break // open response / upload: no answer key
         }
 
         checks.append(feedbackCheck(question))
@@ -199,6 +201,16 @@ public struct QuestionReadiness: Equatable, Sendable {
             title: "Numeric answer",
             severity: configured ? .ok : .required,
             message: configured ? "Answer configured." : "Set the expected value, range, or precision."
+        )
+    }
+
+    private static func formulaCheck(_ question: QuizQuestion) -> ReadinessCheck {
+        let configured = question.formula?.computedValue != nil
+        return ReadinessCheck(
+            id: "formula",
+            title: "Formula answer",
+            severity: configured ? .ok : .required,
+            message: configured ? "Expression and variables are complete." : "Write an expression and define every variable it uses."
         )
     }
 

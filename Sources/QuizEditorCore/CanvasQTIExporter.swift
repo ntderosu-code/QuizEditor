@@ -3,6 +3,10 @@ import Foundation
 public enum CanvasQuizEngine: String, CaseIterable, Identifiable, Codable, Sendable {
     case classicQuizzes
     case newQuizzes
+    /// Canvas Surveys are exported as QTI 1.2 (the only Canvas survey QTI path
+    /// that round-trips reliably). Survey items strip resprocessing so Canvas
+    /// scores no answers.
+    case surveys
 
     public var id: String { rawValue }
 
@@ -10,6 +14,7 @@ public enum CanvasQuizEngine: String, CaseIterable, Identifiable, Codable, Senda
         switch self {
         case .classicQuizzes: "Classic Quizzes (QTI 1.2)"
         case .newQuizzes: "New Quizzes (QTI 2.1)"
+        case .surveys: "Surveys (QTI 1.2)"
         }
     }
 }
@@ -69,34 +74,37 @@ public struct CanvasQTIExporter: Sendable {
         guard !quiz.questions.isEmpty else { throw ExportError.noQuestions }
 
         switch engine {
-        case .classicQuizzes:
-            return QTIPackage(files: classicPackageFiles(for: quiz))
+        case .classicQuizzes, .surveys:
+            // Surveys reuse the QTI 1.2 layout; per-item resprocessing is stripped
+            // inside `classicItemXML(for:index:ungraded:)`.
+            let ungraded = (engine == .surveys) || (quiz.kind == .survey)
+            return QTIPackage(files: classicPackageFiles(for: quiz, ungraded: ungraded))
         case .newQuizzes:
-            return QTIPackage(files: newQuizzesPackageFiles(for: quiz))
+            return QTIPackage(files: newQuizzesPackageFiles(for: quiz, ungraded: quiz.kind == .survey))
         }
     }
 
-    private func classicPackageFiles(for quiz: Quiz) -> [QTIPackageFile] {
+    private func classicPackageFiles(for quiz: Quiz, ungraded: Bool = false) -> [QTIPackageFile] {
         var files = [
             QTIPackageFile(path: "imsmanifest.xml", contents: classicManifestXML(for: quiz)),
             QTIPackageFile(path: "assessment.xml", contents: classicAssessmentXML(for: quiz))
         ]
 
         for (index, question) in quiz.questions.enumerated() {
-            files.append(QTIPackageFile(path: "items/question-\(index + 1).xml", contents: classicItemXML(for: question, index: index + 1)))
+            files.append(QTIPackageFile(path: "items/question-\(index + 1).xml", contents: classicItemXML(for: question, index: index + 1, ungraded: ungraded)))
         }
 
         return files
     }
 
-    private func newQuizzesPackageFiles(for quiz: Quiz) -> [QTIPackageFile] {
+    private func newQuizzesPackageFiles(for quiz: Quiz, ungraded: Bool = false) -> [QTIPackageFile] {
         var files = [
             QTIPackageFile(path: "imsmanifest.xml", contents: newQuizzesManifestXML(for: quiz)),
             QTIPackageFile(path: "assessment.xml", contents: newQuizzesAssessmentXML(for: quiz))
         ]
 
         for (index, question) in quiz.questions.enumerated() {
-            files.append(QTIPackageFile(path: "items/question-\(index + 1).xml", contents: qti21ItemXML(for: question, index: index + 1)))
+            files.append(QTIPackageFile(path: "items/question-\(index + 1).xml", contents: qti21ItemXML(for: question, index: index + 1, ungraded: ungraded)))
         }
 
         return files
@@ -201,10 +209,16 @@ public struct CanvasQTIExporter: Sendable {
         """
     }
 
-    private func classicItemXML(for question: QuizQuestion, index: Int) -> String {
+    private func classicItemXML(for question: QuizQuestion, index: Int, ungraded: Bool = false) -> String {
         let presentation = classicPresentationXML(for: question)
-        let responseProcessing = classicResponseProcessingXML(for: question)
+        let responseProcessing = ungraded ? "" : classicResponseProcessingXML(for: question)
         let feedback = classicFeedbackXML(question.feedback)
+        let pointsField = ungraded ? "" : """
+                        <qtimetadatafield>
+                            <fieldlabel>points_possible</fieldlabel>
+                            <fieldentry>\(formatPoints(question.points))</fieldentry>
+                        </qtimetadatafield>
+        """
 
         return """
         <?xml version="1.0" encoding="UTF-8"?>
@@ -215,11 +229,7 @@ public struct CanvasQTIExporter: Sendable {
                         <qtimetadatafield>
                             <fieldlabel>question_type</fieldlabel>
                             <fieldentry>\(question.type.canvasQuestionType)</fieldentry>
-                        </qtimetadatafield>
-                        <qtimetadatafield>
-                            <fieldlabel>points_possible</fieldlabel>
-                            <fieldentry>\(formatPoints(question.points))</fieldentry>
-                        </qtimetadatafield>\(metadataFields(for: question))
+                        </qtimetadatafield>\(pointsField)\(metadataFields(for: question))
                     </qtimetadata>
                 </itemmetadata>
         \(presentation)
@@ -230,10 +240,20 @@ public struct CanvasQTIExporter: Sendable {
         """
     }
 
-    private func qti21ItemXML(for question: QuizQuestion, index: Int) -> String {
+    private func qti21ItemXML(for question: QuizQuestion, index: Int, ungraded: Bool = false) -> String {
         let responseDeclaration = qti21ResponseDeclaration(for: question)
         let body = qti21ItemBody(for: question)
         let feedback = qti21FeedbackXML(question.feedback)
+        let processing: String
+        if ungraded {
+            processing = "    <responseProcessing/>"
+        } else if question.type == .numeric {
+            processing = qti21NumericResponseProcessing(for: question)
+        } else if question.type == .formula {
+            processing = qti21FormulaResponseProcessing(for: question)
+        } else {
+            processing = "    <responseProcessing template=\"http://www.imsglobal.org/question/qti_v2p1/rptemplates/match_correct\"/>"
+        }
 
         return """
         <?xml version="1.0" encoding="UTF-8"?>
@@ -243,7 +263,7 @@ public struct CanvasQTIExporter: Sendable {
                 <defaultValue><value>0</value></defaultValue>
             </outcomeDeclaration>
         \(body)
-        \(question.type == .numeric ? qti21NumericResponseProcessing(for: question) : "    <responseProcessing template=\"http://www.imsglobal.org/question/qti_v2p1/rptemplates/match_correct\"/>")
+        \(processing)
         \(feedback)
         </assessmentItem>
         """
@@ -312,6 +332,19 @@ public struct CanvasQTIExporter: Sendable {
                     </response_str>
                 </presentation>
             """
+        case .formula:
+            // Body looks like a numeric question; the formula spec is carried in
+            // the item's qtimetadata so Canvas can evaluate it server-side.
+            return """
+                <presentation>
+                    <material><mattext texttype="text/html">\(xmlEscape(question.prompt))</mattext></material>
+                    <response_str ident="response1" rcardinality="Single">
+                        <render_fib fibtype="Decimal" prompt="Box" rows="1" columns="20"/>
+                    </response_str>
+                </presentation>
+            """
+        case .fileUpload:
+            return classicFileUploadPresentation(question)
         }
     }
 
@@ -321,6 +354,24 @@ public struct CanvasQTIExporter: Sendable {
                 <material><mattext texttype="text/html">\(xmlEscape(question.prompt))</mattext></material>
                 <response_str ident="response1" rcardinality="Single">
                     <render_fib fibtype="String" prompt="Box" rows="8" columns="80"/>
+                </response_str>
+            </presentation>
+        """
+    }
+
+    /// File upload in QTI 1.2: a `<response_str type="file">` with the allowed
+    /// MIME types as a single space-separated value. Canvas reads this and
+    /// shows an upload widget.
+    private func classicFileUploadPresentation(_ question: QuizQuestion) -> String {
+        let mimeTypes = question.allowedFileTypes
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+        return """
+            <presentation>
+                <material><mattext texttype="text/html">\(xmlEscape(question.prompt))</mattext></material>
+                <response_str ident="response1" rcardinality="Single" type="file">
+                    <render_fib fibtype="File" prompt="Upload" rows="1" columns="40" mimetype="\(xmlEscape(mimeTypes))"/>
                 </response_str>
             </presentation>
         """
@@ -376,6 +427,12 @@ public struct CanvasQTIExporter: Sendable {
                 ?? question.numeric?.acceptedInterval.map { ($0.low + $0.high) / 2 }
             let correct = representative.map { "<correctResponse><value>\(formatNumber($0))</value></correctResponse>" } ?? ""
             return "    <responseDeclaration identifier=\"RESPONSE\" cardinality=\"single\" baseType=\"float\">\(correct)</responseDeclaration>"
+        case .formula:
+            let representative = question.formula?.computedValue
+            let correct = representative.map { "<correctResponse><value>\(formatNumber($0))</value></correctResponse>" } ?? ""
+            return "    <responseDeclaration identifier=\"RESPONSE\" cardinality=\"single\" baseType=\"float\">\(correct)</responseDeclaration>"
+        case .fileUpload:
+            return "    <responseDeclaration identifier=\"RESPONSE\" cardinality=\"single\" baseType=\"file\"/>"
         case .essay:
             return "    <responseDeclaration identifier=\"RESPONSE\" cardinality=\"single\" baseType=\"string\"/>"
         case .fillInBlank, .shortAnswer:
@@ -444,6 +501,15 @@ public struct CanvasQTIExporter: Sendable {
                     <textEntryInteraction responseIdentifier="RESPONSE" expectedLength="20"/>
                 </itemBody>
             """
+        case .formula:
+            return """
+                <itemBody>
+                    <div>\(inlineXHTML(question.prompt))</div>
+                    <textEntryInteraction responseIdentifier="RESPONSE" expectedLength="20"/>
+                </itemBody>
+            """
+        case .fileUpload:
+            return qti21FileUploadBody(for: question)
         case .matching:
             return qti21MatchingBody(for: question)
         case .multipleAnswer:
@@ -451,6 +517,19 @@ public struct CanvasQTIExporter: Sendable {
         case .multipleChoice, .trueFalse:
             return qti21ChoiceBody(for: question, maxChoices: 1)
         }
+    }
+
+    private func qti21FileUploadBody(for question: QuizQuestion) -> String {
+        let mimes = question.allowedFileTypes
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        let mimeAttribute = mimes.isEmpty ? "" : " expectedMimeTypes=\"\(xmlEscape(mimes.joined(separator: ",")))\""
+        return """
+            <itemBody>
+                <div>\(inlineXHTML(question.prompt))</div>
+                <uploadInteraction responseIdentifier="RESPONSE"\(mimeAttribute)/>
+            </itemBody>
+        """
     }
 
     private func qti21ChoiceBody(for question: QuizQuestion, maxChoices: Int) -> String {
@@ -501,6 +580,15 @@ public struct CanvasQTIExporter: Sendable {
             return classicMatchingResponseProcessing(question)
         case .numeric:
             return classicNumericResponseProcessing(question)
+        case .formula:
+            return classicFormulaResponseProcessing(question)
+        case .fileUpload:
+            // File uploads are scored manually; the resprocessing is a stub.
+            return """
+                <resprocessing>
+                    <outcomes><decvar maxvalue="100" minvalue="0" varname="SCORE" vartype="Decimal"/></outcomes>
+                </resprocessing>
+            """
         default:
             return classicAnswerResponseProcessing(question)
         }
@@ -537,6 +625,77 @@ public struct CanvasQTIExporter: Sendable {
         question.answers
             .map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
+    }
+
+    /// Formula items in QTI 1.2: Canvas evaluates the expression server-side and
+    /// compares the typed answer against `value ± tolerance`. The expression and
+    /// variables are carried in qtimetadata (added by `metadataFields`), and the
+    /// answer key here is a varequal on the computed value with a tolerance band.
+    private func classicFormulaResponseProcessing(_ question: QuizQuestion) -> String {
+        var condition = ""
+        if let formula = question.formula, let value = formula.computedValue {
+            let tol = abs(formula.tolerance)
+            if tol == 0 {
+                condition = """
+                        <respcondition title="correct" continue="No">
+                            <conditionvar><varequal respident="response1">\(formatNumber(value))</varequal></conditionvar>
+                            <setvar action="Set" varname="SCORE">100</setvar>
+                        </respcondition>
+                """
+            } else {
+                condition = """
+                        <respcondition title="correct" continue="No">
+                            <conditionvar><and>
+                                <vargte respident="response1">\(formatNumber(value - tol))</vargte>
+                                <varlte respident="response1">\(formatNumber(value + tol))</varlte>
+                            </and></conditionvar>
+                            <setvar action="Set" varname="SCORE">100</setvar>
+                        </respcondition>
+                """
+            }
+        }
+
+        return """
+            <resprocessing>
+                <outcomes><decvar maxvalue="100" minvalue="0" varname="SCORE" vartype="Decimal"/></outcomes>
+        \(condition)
+            </resprocessing>
+        """
+    }
+
+    /// QTI 2.1 formula items: identical to numeric but the precomputed value
+    /// comes from `formula.computedValue`. The formula and variables are passed
+    /// through `responseProcessing` only when we can emit a representative value
+    /// — Canvas will re-evaluate on the server.
+    private func qti21FormulaResponseProcessing(for question: QuizQuestion) -> String {
+        guard let value = question.formula?.computedValue else {
+            return "    <responseProcessing/>"
+        }
+        let tol = abs(question.formula?.tolerance ?? 0)
+        let test: String
+        if tol == 0 {
+            test = """
+                            <equal toleranceMode="exact"><variable identifier="RESPONSE"/><baseValue baseType="float">\(formatNumber(value))</baseValue></equal>
+            """
+        } else {
+            test = """
+                            <and>
+                                <gte><variable identifier="RESPONSE"/><baseValue baseType="float">\(formatNumber(value - tol))</baseValue></gte>
+                                <lte><variable identifier="RESPONSE"/><baseValue baseType="float">\(formatNumber(value + tol))</baseValue></lte>
+                            </and>
+            """
+        }
+
+        return """
+            <responseProcessing>
+                <responseCondition>
+                    <responseIf>
+        \(test)
+                        <setOutcomeValue identifier="SCORE"><baseValue baseType="float">1</baseValue></setOutcomeValue>
+                    </responseIf>
+                </responseCondition>
+            </responseProcessing>
+        """
     }
 
     private func classicNumericResponseProcessing(_ question: QuizQuestion) -> String {
@@ -646,9 +805,18 @@ public struct CanvasQTIExporter: Sendable {
         value.rounded() == value ? String(Int(value)) : String(value)
     }
 
-    /// Optional Canvas-tolerated metadata fields for tags and difficulty. Canvas
-    /// ignores fields it doesn't recognize, so this is safe to always emit when
-    /// the question carries the metadata.
+    /// Optional Canvas-tolerated metadata fields for tags, difficulty, and the
+    /// formula spec. Canvas ignores fields it doesn't recognize, so this is safe
+    /// to always emit when the question carries the metadata. Formula items
+    /// additionally need the expression and variable values so Canvas can
+    /// re-evaluate the answer server-side.
+    ///
+    /// Stimulus linking is author metadata and is **not** exported: the
+    /// `stimulus`/`stimulus_body` fields would carry passage text that Canvas's
+    /// `calculations`/survey APIs don't have a place for in a one-item-per-file
+    /// QTI package. The linking is preserved on the model and reappears on
+    /// import via the `stimulus` qtimetadata field (which Canvas ignores) so
+    /// round-trips through the editor don't lose the link.
     private func metadataFields(for question: QuizQuestion) -> String {
         var fields: [String] = []
         if let difficulty = question.difficulty {
@@ -666,6 +834,18 @@ public struct CanvasQTIExporter: Sendable {
                         <qtimetadatafield>
                             <fieldlabel>tags</fieldlabel>
                             <fieldentry>\(xmlEscape(question.tags.joined(separator: ", ")))</fieldentry>
+                        </qtimetadatafield>
+            """)
+        }
+        if let formula = question.formula {
+            let variablesXML = formula.variables
+                .map { "<variable name=\"\(xmlEscape($0.name))\">\(formatNumber($0.value))</variable>" }
+                .joined()
+            fields.append("""
+
+                        <qtimetadatafield>
+                            <fieldlabel>formula_question</fieldlabel>
+                            <fieldentry><formula>\(xmlEscape(formula.expression))<variables>\(variablesXML)</variables></formula></fieldentry>
                         </qtimetadatafield>
             """)
         }
