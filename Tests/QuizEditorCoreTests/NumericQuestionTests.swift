@@ -47,7 +47,7 @@ final class NumericQuestionTests: XCTestCase {
         let quiz = Quiz(title: "Chem", questions: [numericQuestion(
             NumericAnswer(mode: .exact, value: 18, margin: 0.5, expectedUnit: "g/mol")
         )])
-        let item = try XCTUnwrap(CanvasQTIExporter(engine: .classicQuizzes).makePackage(for: quiz).file(named: "items/question-1.xml")).contents
+        let item = try XCTUnwrap(QTIExporter(target: .qti12).makePackage(for: quiz).file(named: "items/question-1.xml")).contents
         XCTAssertTrue(item.contains("numerical_question"))
         XCTAssertTrue(item.contains("fibtype=\"Decimal\""))
         // value ± margin → [17.5, 18.5]
@@ -61,7 +61,7 @@ final class NumericQuestionTests: XCTestCase {
         let quiz = Quiz(title: "Chem", questions: [numericQuestion(
             NumericAnswer(mode: .range, rangeMin: 8, rangeMax: 10)
         )])
-        let item = try XCTUnwrap(CanvasQTIExporter(engine: .classicQuizzes).makePackage(for: quiz).file(named: "items/question-1.xml")).contents
+        let item = try XCTUnwrap(QTIExporter(target: .qti12).makePackage(for: quiz).file(named: "items/question-1.xml")).contents
         XCTAssertTrue(item.contains("8"))
         XCTAssertTrue(item.contains("10"))
         XCTAssertTrue(item.contains("vargte"))
@@ -73,7 +73,7 @@ final class NumericQuestionTests: XCTestCase {
         let quiz = Quiz(title: "Chem", questions: [numericQuestion(
             NumericAnswer(mode: .exact, value: 18, margin: 0.5)
         )])
-        let item = try XCTUnwrap(CanvasQTIExporter(engine: .newQuizzes).makePackage(for: quiz).file(named: "items/question-1.xml")).contents
+        let item = try XCTUnwrap(QTIExporter(target: .qti21).makePackage(for: quiz).file(named: "items/question-1.xml")).contents
         XCTAssertTrue(item.contains("baseType=\"float\""))
         XCTAssertTrue(item.contains("textEntryInteraction"))
         XCTAssertTrue(item.contains("18"))
@@ -85,7 +85,7 @@ final class NumericQuestionTests: XCTestCase {
         let quiz = Quiz(title: "Chem", questions: [numericQuestion(
             NumericAnswer(mode: .range, rangeMin: 8, rangeMax: 10)
         )])
-        let imported = try roundTripThroughDirectory(quiz, engine: .classicQuizzes)
+        let imported = try roundTripThroughDirectory(quiz, target: .qti12)
         let q = try XCTUnwrap(imported.questions.first)
         XCTAssertEqual(q.type, .numeric)
         XCTAssertEqual(q.numeric?.rangeMin, 8)
@@ -93,8 +93,8 @@ final class NumericQuestionTests: XCTestCase {
     }
 
     /// Writes an exported package to a temp directory and imports it back.
-    private func roundTripThroughDirectory(_ quiz: Quiz, engine: CanvasQuizEngine) throws -> Quiz {
-        let package = try CanvasQTIExporter(engine: engine).makePackage(for: quiz)
+    private func roundTripThroughDirectory(_ quiz: Quiz, target: QTIExportTarget) throws -> Quiz {
+        let package = try QTIExporter(target: target).makePackage(for: quiz)
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("numeric-rt-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -112,9 +112,9 @@ final class NumericQuestionTests: XCTestCase {
         let quiz = Quiz(title: "Chem", questions: [numericQuestion(
             NumericAnswer(mode: .exact, value: 18, margin: 0.5, expectedUnit: "UNIT_TOKEN_GML")
         )])
-        for engine in CanvasQuizEngine.allCases {
-            let everything = try CanvasQTIExporter(engine: engine).makePackage(for: quiz).files.map(\.contents).joined()
-            XCTAssertFalse(everything.contains("UNIT_TOKEN_GML"), "unit leaked into \(engine) export")
+        for target in QTIExportTarget.allCases {
+            let everything = try QTIExporter(target: target).makePackage(for: quiz).files.map(\.contents).joined()
+            XCTAssertFalse(everything.contains("UNIT_TOKEN_GML"), "unit leaked into \(target) export")
         }
     }
 }

@@ -26,11 +26,11 @@ public struct QTIValidationIssue: Equatable, Sendable, Identifiable {
 public struct QTIValidator: Sendable {
     public init() {}
 
-    /// Builds the package that would be exported for `quiz`/`engine` and validates it.
-    public func validateExport(of quiz: Quiz, engine: CanvasQuizEngine) -> [QTIValidationIssue] {
+    /// Builds the package that would be exported for `quiz`/`target` and validates it.
+    public func validateExport(of quiz: Quiz, target: QTIExportTarget) -> [QTIValidationIssue] {
         let package: QTIPackage
         do {
-            package = try CanvasQTIExporter(engine: engine).makePackage(for: quiz)
+            package = try QTIExporter(target: target).makePackage(for: quiz)
         } catch {
             return [QTIValidationIssue(severity: .error, message: "The quiz could not be exported: \(error).")]
         }
@@ -38,8 +38,34 @@ public struct QTIValidator: Sendable {
         var issues: [QTIValidationIssue] = []
         issues.append(contentsOf: wellFormednessIssues(in: package))
         issues.append(contentsOf: manifestConsistencyIssues(in: package, expectedItemCount: quiz.questions.count))
-        issues.append(contentsOf: roundTripIssues(package: package, quiz: quiz, engine: engine))
+        issues.append(contentsOf: roundTripIssues(package: package, quiz: quiz, target: target))
+        issues.append(contentsOf: formatFidelityIssues(of: quiz, target: target))
         return issues
+    }
+
+    /// Warns about authoring detail the chosen QTI standard cannot carry.
+    ///
+    /// QTI 1.2 has `qtimetadata`, an open key/value area where the exporter
+    /// stores a formula's expression and variables, so a formula survives a
+    /// round-trip. (That area carries the formula spec only; author metadata is
+    /// never exported.) QTI 2.1 removed that escape hatch and has no element for an
+    /// expression, so exporting a formula there keeps the answer key but drops
+    /// the formula itself. The author usually has a lossless option one menu
+    /// item away, so it is worth saying so.
+    ///
+    /// Advisory only, per the project rule that validation never blocks an
+    /// export: this is always a warning, never an error.
+    public func formatFidelityIssues(of quiz: Quiz, target: QTIExportTarget) -> [QTIValidationIssue] {
+        guard target == .qti21 else { return [] }
+
+        let formulaCount = quiz.questions.filter { $0.type == .formula }.count
+        guard formulaCount > 0 else { return [] }
+
+        let subject = formulaCount == 1 ? "1 formula question" : "\(formulaCount) formula questions"
+        return [QTIValidationIssue(
+            severity: .warning,
+            message: "QTI 2.1 has no place to store a formula expression, so \(subject) will export with the computed answer key but without the formula. Export as QTI 1.2 (Classic Quizzes) to keep the expression and its variables."
+        )]
     }
 
     /// Checks that every file in the package parses as well-formed XML.
@@ -85,7 +111,7 @@ public struct QTIValidator: Sendable {
 
     /// Writes the package to a temporary directory, re-imports it, and confirms
     /// the questions survive the round trip.
-    private func roundTripIssues(package: QTIPackage, quiz: Quiz, engine: CanvasQuizEngine) -> [QTIValidationIssue] {
+    private func roundTripIssues(package: QTIPackage, quiz: Quiz, target: QTIExportTarget) -> [QTIValidationIssue] {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         defer { try? FileManager.default.removeItem(at: directory) }
 
@@ -107,8 +133,8 @@ public struct QTIValidator: Sendable {
             }
 
             // Classic QTI 1.2 preserves the Canvas question type; QTI 2.1 has no
-            // type metadata, so only check types for the classic engine.
-            guard engine == .classicQuizzes else { return [] }
+            // type metadata, so only check types for the classic target.
+            guard target == .qti12 else { return [] }
             var issues: [QTIValidationIssue] = []
             for (index, pair) in zip(quiz.questions, reimported.questions).enumerated() where pair.0.type != pair.1.type {
                 issues.append(QTIValidationIssue(

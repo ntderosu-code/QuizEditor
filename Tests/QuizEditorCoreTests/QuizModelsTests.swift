@@ -78,4 +78,90 @@ final class QuizModelsTests: XCTestCase {
         )
         XCTAssertEqual(quiz.totalPoints, 4.5)
     }
+
+    // MARK: - QuizKind (graded vs survey)
+
+    func testNewQuizKindDefaultsToGraded() {
+        let quiz = Quiz(title: "T")
+        XCTAssertEqual(quiz.kind, .graded)
+    }
+
+    func testQuizKindRoundTripsThroughCoding() throws {
+        let survey = Quiz(title: "Mid-semester feedback", kind: .survey)
+        let data = try JSONEncoder().encode(survey)
+        let decoded = try JSONDecoder().decode(Quiz.self, from: data)
+        XCTAssertEqual(decoded.kind, .survey)
+    }
+
+    func testLegacyQuizDecodesAsGraded() throws {
+        // Pre-QuizKind JSON: no `kind` field. Must still open, defaulting to graded.
+        let legacyJSON = """
+        {
+          "id": "11111111-1111-1111-1111-111111111111",
+          "title": "Legacy",
+          "questions": []
+        }
+        """
+        let quiz = try JSONDecoder().decode(Quiz.self, from: Data(legacyJSON.utf8))
+        XCTAssertEqual(quiz.kind, .graded)
+    }
+
+    // MARK: - New question types
+
+    func testFileUploadAndFormulaRoundTrip() throws {
+        let formula = FormulaAnswer(
+            variables: [FormulaVariable(name: "m", value: 2), FormulaVariable(name: "a", value: 9.8)],
+            expression: "m * a",
+            tolerance: 0.1,
+            expectedUnit: "N"
+        )
+        let question = QuizQuestion(
+            type: .formula,
+            prompt: "Compute F.",
+            answers: [],
+            formula: formula
+        )
+        let data = try JSONEncoder().encode(question)
+        let decoded = try JSONDecoder().decode(QuizQuestion.self, from: data)
+        XCTAssertEqual(decoded.type, .formula)
+        XCTAssertEqual(decoded.formula?.variables.count, 2)
+        XCTAssertEqual(decoded.formula?.expression, "m * a")
+        XCTAssertEqual(decoded.formula?.tolerance, 0.1)
+        XCTAssertEqual(decoded.formula?.expectedUnit, "N")
+    }
+
+    func testFileUploadTypeHasNoFormula() throws {
+        let question = QuizQuestion(type: .fileUpload, prompt: "Upload your essay", answers: [], formula: nil)
+        let data = try JSONEncoder().encode(question)
+        let decoded = try JSONDecoder().decode(QuizQuestion.self, from: data)
+        XCTAssertEqual(decoded.type, .fileUpload)
+        XCTAssertNil(decoded.formula)
+    }
+
+    func testFormulaFieldDecodesAsNilForNonFormulaQuestions() throws {
+        // Legacy JSON for an MC question shouldn't crash if it ever gains a `formula` key — the tolerant
+        // decoder just ignores it for the wrong type. We assert the field is nil.
+        let json = """
+        {
+          "id": "22222222-2222-2222-2222-222222222222",
+          "type": "multipleChoice",
+          "prompt": "Pick one",
+          "answers": []
+        }
+        """
+        let decoded = try JSONDecoder().decode(QuizQuestion.self, from: Data(json.utf8))
+        XCTAssertNil(decoded.formula)
+    }
+
+    func testCanvasQuestionTypeMappingsForNewTypes() {
+        XCTAssertEqual(QuizQuestionType.fileUpload.canvasQuestionType, "file_upload_question")
+        XCTAssertEqual(QuizQuestionType.formula.canvasQuestionType, "calculated_question")
+    }
+
+    func testDisplayNamesCoverEveryCase() {
+        // Guard against a future case being added to the enum without a display name.
+        for type in QuizQuestionType.allCases {
+            XCTAssertFalse(type.displayName.isEmpty, "Missing display name for \(type)")
+        }
+    }
 }

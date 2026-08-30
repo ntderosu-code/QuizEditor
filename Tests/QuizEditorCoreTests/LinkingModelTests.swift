@@ -122,7 +122,7 @@ final class LinkingModelTests: XCTestCase {
             sources: [Source(id: "SOURCE_TOKEN", citation: "SOURCE_CITATION_TOKEN")]
         )
 
-        let package = try CanvasQTIExporter(engine: .classicQuizzes).makePackage(for: quiz)
+        let package = try QTIExporter(target: .qti12).makePackage(for: quiz)
         let everything = package.files.map(\.contents).joined(separator: "\n")
 
         for token in ["OBJECTIVE_TOKEN", "COMPETENCY_TOKEN", "SOURCE_TOKEN", "STIMULUS_TOKEN",

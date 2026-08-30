@@ -108,16 +108,24 @@ public struct QuestionLinter: Sendable {
     /// declarative, lexicon, and recall-drift findings; General leaves the
     /// built-ins untouched. `context` supplies resolved linked entities for checks
     /// that need them (recall-drift); pass `.empty` when there are no links.
-    public func findings(for question: QuizQuestion, persona: Persona, context: QuestionLinkContext = .empty) -> [LintFinding] {
+    ///
+    /// `kind` is `.graded` by default. When `.survey`, the answer-key rules
+    /// (noCorrectAnswer, multipleCorrectAnswers) and missingFeedback are skipped —
+    /// surveys have no correct answer to mark, and the "missing feedback" guidance
+    /// doesn't apply to a non-graded item. Distractor-quality and terminology rules
+    /// still run, since a survey option can still be badly written.
+    public func findings(for question: QuizQuestion, persona: Persona, context: QuestionLinkContext = .empty, kind: QuizKind = .graded) -> [LintFinding] {
         var builtIn: [LintFinding] = []
 
-        builtIn.append(contentsOf: answerKeyFindings(question))
+        if kind == .graded {
+            builtIn.append(contentsOf: answerKeyFindings(question))
+        }
         builtIn.append(contentsOf: optionTextFindings(question))
         if let allNone = allOrNoneFinding(question) { builtIn.append(allNone) }
         if let negative = negativeStemFinding(question) { builtIn.append(negative) }
         if let lengthBias = lengthBiasFinding(question) { builtIn.append(lengthBias) }
         if let article = articleCueFinding(question) { builtIn.append(article) }
-        if let feedback = missingFeedbackFinding(question) { builtIn.append(feedback) }
+        if kind == .graded, let feedback = missingFeedbackFinding(question) { builtIn.append(feedback) }
 
         var findings = applyOverrides(builtIn, profile: persona.linterProfile)
         findings.append(contentsOf: declarativeFindings(question, profile: persona.linterProfile))
@@ -155,7 +163,9 @@ public struct QuestionLinter: Sendable {
 
     /// Findings for every question in a quiz under `persona`, keyed by question
     /// id. Resolves each question's linked objectives from the quiz so context-
-    /// dependent checks work. Questions with no findings are omitted.
+    /// dependent checks work. Questions with no findings are omitted. The
+    /// quiz's `kind` (graded or survey) flows into each question's findings —
+    /// a survey skips answer-key and missing-feedback rules.
     public func findings(for quiz: Quiz, persona: Persona) -> [QuizQuestion.ID: [LintFinding]] {
         let objectivesByID = Dictionary(quiz.objectives.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
 
@@ -164,7 +174,7 @@ public struct QuestionLinter: Sendable {
             let context = QuestionLinkContext(
                 linkedObjectives: question.objectiveIDs.compactMap { objectivesByID[$0] }
             )
-            let questionFindings = findings(for: question, persona: persona, context: context)
+            let questionFindings = findings(for: question, persona: persona, context: context, kind: quiz.kind)
             if !questionFindings.isEmpty {
                 result[question.id] = questionFindings
             }
@@ -384,7 +394,16 @@ public struct QuestionLinter: Sendable {
                     suggestion: "Set an exact value with a margin, a range, or a precision so it can be graded."
                 ))
             }
-        case .essay, .matching:
+        case .formula:
+            if question.formula?.computedValue == nil {
+                findings.append(LintFinding(
+                    rule: .noCorrectAnswer,
+                    severity: .warning,
+                    message: "This formula question has no expression or its variables can't be evaluated.",
+                    suggestion: "Write an expression like \"m * a\" and define every variable it references."
+                ))
+            }
+        case .fileUpload, .essay, .matching:
             break
         }
 
@@ -531,7 +550,7 @@ public struct QuestionLinter: Sendable {
     private func usesChoiceOptions(_ question: QuizQuestion) -> Bool {
         switch question.type {
         case .multipleChoice, .multipleAnswer, .trueFalse: true
-        case .fillInBlank, .shortAnswer, .essay, .matching, .numeric: false
+        case .fillInBlank, .shortAnswer, .essay, .matching, .numeric, .formula, .fileUpload: false
         }
     }
 

@@ -15,14 +15,14 @@ public struct QTIPackageWriter: Sendable {
         }
     }
 
-    private let exporter: CanvasQTIExporter
+    private let exporter: QTIExporter
 
-    public init(exporter: CanvasQTIExporter = CanvasQTIExporter()) {
+    public init(exporter: QTIExporter = QTIExporter()) {
         self.exporter = exporter
     }
 
-    public init(engine: CanvasQuizEngine) {
-        self.exporter = CanvasQTIExporter(engine: engine)
+    public init(target: QTIExportTarget) {
+        self.exporter = QTIExporter(target: target)
     }
 
     public func writeZip(for quiz: Quiz, to outputURL: URL) throws {

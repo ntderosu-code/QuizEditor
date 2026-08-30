@@ -91,7 +91,7 @@ struct QuizDocumentActions {
     var isAIPanelVisible: Bool
     var hasQuestions: Bool
 
-    var exportQTIPackage: (CanvasQuizEngine) -> Void
+    var exportQTIPackage: (QTIExportTarget) -> Void
     var exportFormattedDocument: () -> Void
     var exportPaperExam: () -> Void
 
@@ -151,8 +151,8 @@ struct QuizDocumentCommands: Commands {
 
             Menu("Export") {
                 Section("QTI Package") {
-                    ForEach(CanvasQuizEngine.allCases) { engine in
-                        Button(engine.displayName) { actions?.exportQTIPackage(engine) }
+                    ForEach(QTIExportTarget.allCases) { target in
+                        Button(target.displayName) { actions?.exportQTIPackage(target) }
                     }
                 }
                 Divider()

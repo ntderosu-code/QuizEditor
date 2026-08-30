@@ -59,8 +59,8 @@ final class LargeDocumentPerformanceTests: XCTestCase {
 
     /// Writes an exported package to a temp directory for import timing. Returned
     /// URL is cleaned up by the caller via `addTeardownBlock`.
-    private func exportedDirectory(_ quiz: Quiz, engine: CanvasQuizEngine) throws -> URL {
-        let package = try CanvasQTIExporter(engine: engine).makePackage(for: quiz)
+    private func exportedDirectory(_ quiz: Quiz, target: QTIExportTarget) throws -> URL {
+        let package = try QTIExporter(target: target).makePackage(for: quiz)
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("perf-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         for file in package.files {
@@ -98,13 +98,13 @@ final class LargeDocumentPerformanceTests: XCTestCase {
 
     func testMeasureClassicExport() {
         let quiz = makeQuiz(largeCount)
-        measure { _ = try? CanvasQTIExporter(engine: .classicQuizzes).makePackage(for: quiz) }
+        measure { _ = try? QTIExporter(target: .qti12).makePackage(for: quiz) }
     }
 
     func testClassicExportScalesLinearly() {
         let small = makeQuiz(smallCount), large = makeQuiz(largeCount)
-        let tSmall = bestTime { _ = try? CanvasQTIExporter(engine: .classicQuizzes).makePackage(for: small) }
-        let tLarge = bestTime { _ = try? CanvasQTIExporter(engine: .classicQuizzes).makePackage(for: large) }
+        let tSmall = bestTime { _ = try? QTIExporter(target: .qti12).makePackage(for: small) }
+        let tLarge = bestTime { _ = try? QTIExporter(target: .qti12).makePackage(for: large) }
         assertScalesLinearly("Classic export", small: tSmall, large: tLarge)
         XCTAssertLessThan(tLarge, absoluteBudgetSeconds, "Classic export of \(largeCount) questions took \(tLarge)s")
     }
@@ -113,13 +113,13 @@ final class LargeDocumentPerformanceTests: XCTestCase {
 
     func testMeasureNewQuizzesExport() {
         let quiz = makeQuiz(largeCount)
-        measure { _ = try? CanvasQTIExporter(engine: .newQuizzes).makePackage(for: quiz) }
+        measure { _ = try? QTIExporter(target: .qti21).makePackage(for: quiz) }
     }
 
     func testNewQuizzesExportScalesLinearly() {
         let small = makeQuiz(smallCount), large = makeQuiz(largeCount)
-        let tSmall = bestTime { _ = try? CanvasQTIExporter(engine: .newQuizzes).makePackage(for: small) }
-        let tLarge = bestTime { _ = try? CanvasQTIExporter(engine: .newQuizzes).makePackage(for: large) }
+        let tSmall = bestTime { _ = try? QTIExporter(target: .qti21).makePackage(for: small) }
+        let tLarge = bestTime { _ = try? QTIExporter(target: .qti21).makePackage(for: large) }
         assertScalesLinearly("New Quizzes export", small: tSmall, large: tLarge)
         XCTAssertLessThan(tLarge, absoluteBudgetSeconds, "New Quizzes export of \(largeCount) questions took \(tLarge)s")
     }
@@ -127,13 +127,13 @@ final class LargeDocumentPerformanceTests: XCTestCase {
     // MARK: - QTI import (parse a large package)
 
     func testMeasureQTIImport() throws {
-        let dir = try exportedDirectory(makeQuiz(largeCount), engine: .classicQuizzes)
+        let dir = try exportedDirectory(makeQuiz(largeCount), target: .qti12)
         measure { _ = try? QTIImporter().importQuiz(fromDirectory: dir) }
     }
 
     func testQTIImportScalesLinearly() throws {
-        let smallDir = try exportedDirectory(makeQuiz(smallCount), engine: .classicQuizzes)
-        let largeDir = try exportedDirectory(makeQuiz(largeCount), engine: .classicQuizzes)
+        let smallDir = try exportedDirectory(makeQuiz(smallCount), target: .qti12)
+        let largeDir = try exportedDirectory(makeQuiz(largeCount), target: .qti12)
         let tSmall = bestTime { _ = try? QTIImporter().importQuiz(fromDirectory: smallDir) }
         let tLarge = bestTime { _ = try? QTIImporter().importQuiz(fromDirectory: largeDir) }
         assertScalesLinearly("QTI import", small: tSmall, large: tLarge)

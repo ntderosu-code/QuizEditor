@@ -23,6 +23,9 @@ struct QuestionEditor: View {
     var linkedContext: PromptLinkContext = .empty
     /// The active persona, so the inline item-writing checks reflect the discipline.
     var persona: Persona = .general
+    /// The quiz's kind. A survey has no answer key to grade and no result to
+    /// explain, so the lint and readiness checks for both are skipped.
+    var kind: QuizKind = .graded
     /// Opens the formatted preview for this question (owned by ContentView).
     var onPreview: () -> Void = {}
     let onDelete: () -> Void
@@ -44,7 +47,7 @@ struct QuestionEditor: View {
     }
 
     private var findings: [LintFinding] {
-        QuestionLinter().findings(for: question, persona: persona)
+        QuestionLinter().findings(for: question, persona: persona, kind: kind)
     }
 
     /// A non-optional binding to the question's numeric spec, materializing a
@@ -53,6 +56,29 @@ struct QuestionEditor: View {
         Binding(
             get: { question.numeric ?? NumericAnswer() },
             set: { question.numeric = $0 }
+        )
+    }
+
+    /// A non-optional binding to the question's formula spec, materializing a
+    /// default when none exists yet.
+    private var formulaBinding: Binding<FormulaAnswer> {
+        Binding(
+            get: { question.formula ?? FormulaAnswer() },
+            set: { question.formula = $0 }
+        )
+    }
+
+    /// A non-optional binding to the question's allowed file types (stored as
+    /// an array, edited as a comma-separated text field).
+    private var fileTypesBinding: Binding<String> {
+        Binding(
+            get: { question.allowedFileTypes.joined(separator: ", ") },
+            set: { newValue in
+                question.allowedFileTypes = newValue
+                    .split(separator: ",")
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
+            }
         )
     }
 
@@ -78,13 +104,17 @@ struct QuestionEditor: View {
                         MatchingEditor(matches: $question.matches)
                     } else if question.type == .numeric {
                         NumericAnswerEditor(numeric: numericBinding)
+                    } else if question.type == .formula {
+                        FormulaAnswerEditor(formula: formulaBinding)
+                    } else if question.type == .fileUpload {
+                        FileUploadEditor(allowedFileTypes: fileTypesBinding)
                     } else if question.type != .essay {
-                        AnswerEditor(question: $question)
+                        AnswerEditor(question: $question, kind: kind)
                     }
 
                     feedbackSection
 
-                    let readiness = QuestionReadiness(question: question)
+                    let readiness = QuestionReadiness(question: question, kind: kind)
                     if readiness.status != .ready {
                         QuestionReadinessView(readiness: readiness)
                     }
@@ -114,7 +144,7 @@ struct QuestionEditor: View {
                 HStack(spacing: 8) {
                     Text("Question \(questionNumber) of \(questionTotal)")
                         .font(.headline)
-                    ReadinessBadge(status: QuestionReadiness(question: question).status)
+                    ReadinessBadge(status: QuestionReadiness(question: question, kind: kind).status)
                 }
                 Text(question.type.displayName)
                     .font(.caption)
@@ -391,6 +421,7 @@ struct QuestionReviewSheet: View {
 
 struct AnswerEditor: View {
     @Binding var question: QuizQuestion
+    var kind: QuizKind = .graded
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -521,7 +552,7 @@ struct AnswerEditor: View {
     @ViewBuilder
     private var answerValidation: some View {
         let relevant: Set<String> = ["key", "choices", "blanks", "duplicates"]
-        let issues = QuestionReadiness(question: question).checks
+        let issues = QuestionReadiness(question: question, kind: kind).checks
             .filter { relevant.contains($0.id) && !$0.isSatisfied }
         if !issues.isEmpty {
             VStack(alignment: .leading, spacing: 4) {
@@ -717,6 +748,105 @@ struct MatchingEditor: View {
                     .accessibilityLabel("Remove matching pair \(number)")
                 }
             }
+        }
+    }
+}
+
+/// Edits a formula (calculated) question's variables, expression, tolerance,
+/// and the advisory expected unit. The expected unit is tool-only and never
+/// sent to the LMS (mirrors `NumericAnswerEditor`).
+struct FormulaAnswerEditor: View {
+    @Binding var formula: FormulaAnswer
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Formula answer")
+                .font(.subheadline.weight(.semibold))
+
+            HStack(alignment: .top, spacing: 16) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Variables")
+                        .font(.caption.weight(.semibold))
+                    ForEach($formula.variables) { $variable in
+                        HStack(spacing: 6) {
+                            TextField("name", text: $variable.name)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 80)
+                                .accessibilityLabel("Variable name")
+                            TextField("value", value: $variable.value, format: .number)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 80)
+                                .accessibilityLabel("Variable value")
+                            Button {
+                                formula.variables.removeAll { $0.id == variable.id }
+                            } label: {
+                                Image(systemName: "minus.circle")
+                            }
+                            .buttonStyle(.borderless)
+                            .accessibilityLabel("Remove variable")
+                        }
+                    }
+                    Button {
+                        formula.variables.append(FormulaVariable(name: "", value: 0))
+                    } label: {
+                        Label("Add Variable", systemImage: "plus")
+                    }
+                    .buttonStyle(.borderless)
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    LabeledField("Expression") {
+                        TextField("e.g. m * a", text: $formula.expression)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 140)
+                    }
+                    LabeledField("± Tolerance") {
+                        TextField("0", value: $formula.tolerance, format: .number)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 80)
+                    }
+                    LabeledField("Expected unit (optional)") {
+                        TextField("e.g. N", text: expectedUnitBinding)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 80)
+                    }
+                }
+            }
+
+            Label("Uses *, /, +, -, parentheses, and variable names. e.g. \"(a + b) * 2\".", systemImage: "info.circle")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var expectedUnitBinding: Binding<String> {
+        Binding(
+            get: { formula.expectedUnit ?? "" },
+            set: { formula.expectedUnit = $0.isEmpty ? nil : $0 }
+        )
+    }
+}
+
+/// Edits a file upload question's allowed MIME types. Empty means any file.
+struct FileUploadEditor: View {
+    @Binding var allowedFileTypes: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("File upload")
+                .font(.subheadline.weight(.semibold))
+
+            LabeledField("Allowed file types (optional)") {
+                TextField("application/pdf, image/png", text: $allowedFileTypes)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 280)
+            }
+
+            Label("Leave blank to accept any file. Use MIME types, one per comma.", systemImage: "info.circle")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }

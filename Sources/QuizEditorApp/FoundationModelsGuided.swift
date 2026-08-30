@@ -215,7 +215,7 @@ struct GenMatch {
 @available(macOS 26.0, *)
 @Generable
 struct GenQuestion {
-    @Guide(description: "the question type, one of: multipleChoice, multipleAnswer, trueFalse, fillInBlank, shortAnswer, essay, matching, numeric")
+    @Guide(description: "the question type, one of: multipleChoice, multipleAnswer, trueFalse, fillInBlank, shortAnswer, essay, matching, numeric, fileUpload, formula")
     var type: String
     @Guide(description: "the question stem")
     var prompt: String

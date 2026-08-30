@@ -4,14 +4,14 @@ import QuizEditorCore
 /// Drives the QTI validation sheet shown before an export when issues are found.
 struct QTIValidationContext: Identifiable {
     let id = UUID()
-    let engine: CanvasQuizEngine
+    let target: QTIExportTarget
     let issues: [QTIValidationIssue]
 }
 
 /// Reports QTI validation findings before exporting. The user can fix the quiz
 /// and re-export, or proceed anyway (the findings are advisory).
 struct QTIValidationSheet: View {
-    let engineName: String
+    let targetName: String
     let issues: [QTIValidationIssue]
     let onExportAnyway: () -> Void
     @Environment(\.dismiss) private var dismiss
@@ -77,8 +77,8 @@ struct QTIValidationSheet: View {
 
     private var summary: String {
         if hasErrors {
-            return "The \(engineName) package has problems that may keep it from importing cleanly into Canvas or another LMS. Review them below — you can export anyway, but fixing them first is recommended."
+            return "The \(targetName) package has problems that may keep it from importing cleanly into Canvas or another LMS. Review them below — you can export anyway, but fixing them first is recommended."
         }
-        return "The \(engineName) package re-imported cleanly. These notes are informational."
+        return "The \(targetName) package re-imported cleanly. These notes are informational."
     }
 }

@@ -101,6 +101,46 @@ final class QuestionReadinessTests: XCTestCase {
         XCTAssertEqual(check(r, "numeric")?.severity, .required)
     }
 
+    // MARK: - Surveys
+
+    func testSurveyQuestionWithNoKeyOrFeedbackIsReady() {
+        // A survey has nothing to grade, so the answer-key and feedback checks
+        // do not apply. The item is still expected to have a stem and choices.
+        let opinion = mc(
+            answers: [
+                QuizAnswer(text: "Strongly agree", isCorrect: false),
+                QuizAnswer(text: "Neutral", isCorrect: false),
+                QuizAnswer(text: "Strongly disagree", isCorrect: false)
+            ],
+            feedback: ""
+        )
+        XCTAssertEqual(QuestionReadiness(question: opinion).status, .needsWork)
+
+        let survey = QuestionReadiness(question: opinion, kind: .survey)
+        XCTAssertEqual(survey.status, .ready)
+        XCTAssertNil(check(survey, "key"))
+        XCTAssertNil(check(survey, "feedback"))
+    }
+
+    func testSurveyStillRequiresAStemAndChoices() {
+        let noStem = QuestionReadiness(question: mc(prompt: "  ", feedback: ""), kind: .survey)
+        XCTAssertEqual(noStem.status, .draft)
+
+        let oneChoice = QuestionReadiness(
+            question: mc(answers: [QuizAnswer(text: "Yes", isCorrect: false)], feedback: ""),
+            kind: .survey
+        )
+        XCTAssertEqual(check(oneChoice, "choices")?.severity, .required)
+    }
+
+    func testSurveyNumericAndFormulaItemsNeedNoAnswerKey() {
+        let numeric = QuizQuestion(type: .numeric, prompt: "How many hours do you study?", feedback: "")
+        XCTAssertEqual(QuestionReadiness(question: numeric, kind: .survey).status, .ready)
+
+        let formula = QuizQuestion(type: .formula, prompt: "Estimate your commute.", feedback: "")
+        XCTAssertEqual(QuestionReadiness(question: formula, kind: .survey).status, .ready)
+    }
+
     func testMatchingNeedsAtLeastTwoPairs() {
         let q = QuizQuestion(type: .matching, prompt: "Match capitals.", matches: [
             MatchingPair(prompt: "France", match: "Paris")

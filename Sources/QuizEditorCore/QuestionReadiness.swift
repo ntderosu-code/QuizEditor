@@ -55,9 +55,20 @@ public struct ReadinessCheck: Equatable, Sendable, Identifiable {
 public struct QuestionReadiness: Equatable, Sendable {
     public let checks: [ReadinessCheck]
 
-    public init(question: QuizQuestion) {
-        self.checks = Self.computeChecks(for: question)
+    /// `kind` defaults to `.graded`. In a survey there is no answer to grade and
+    /// no result to explain, so the answer-key and feedback checks are dropped —
+    /// mirroring the linter, which skips the same rules for a survey. Stem,
+    /// choice-count, blank, and duplicate checks still apply: a survey item can
+    /// still be badly written.
+    public init(question: QuizQuestion, kind: QuizKind = .graded) {
+        let all = Self.computeChecks(for: question)
+        self.checks = kind == .survey
+            ? all.filter { !Self.gradedOnlyCheckIDs.contains($0.id) }
+            : all
     }
+
+    /// Check ids that only make sense for a graded quiz.
+    private static let gradedOnlyCheckIDs: Set<String> = ["key", "numeric", "formula", "feedback"]
 
     /// The rolled-up status: a missing stem is a draft; any unmet check otherwise
     /// means it needs work; all passing means ready.
@@ -85,10 +96,12 @@ public struct QuestionReadiness: Equatable, Sendable {
             checks += acceptedAnswerChecks(question)
         case .numeric:
             checks.append(numericCheck(question))
+        case .formula:
+            checks.append(formulaCheck(question))
         case .matching:
             checks += matchingChecks(question)
-        case .essay:
-            break // open response: no answer key
+        case .essay, .fileUpload:
+            break // open response / upload: no answer key
         }
 
         checks.append(feedbackCheck(question))
@@ -199,6 +212,16 @@ public struct QuestionReadiness: Equatable, Sendable {
             title: "Numeric answer",
             severity: configured ? .ok : .required,
             message: configured ? "Answer configured." : "Set the expected value, range, or precision."
+        )
+    }
+
+    private static func formulaCheck(_ question: QuizQuestion) -> ReadinessCheck {
+        let configured = question.formula?.computedValue != nil
+        return ReadinessCheck(
+            id: "formula",
+            title: "Formula answer",
+            severity: configured ? .ok : .required,
+            message: configured ? "Expression and variables are complete." : "Write an expression and define every variable it uses."
         )
     }
 
