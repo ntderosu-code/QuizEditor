@@ -72,38 +72,41 @@ public struct QTIImporter: Sendable {
         let itemPaths = itemHrefs(in: manifest, assessment: assessment)
         let title = xmlUnescape(attribute("title", in: assessment) ?? "Imported Quiz")
 
-        var questions = itemPaths.compactMap { path -> QuizQuestion? in
+        var itemXML = itemPaths.compactMap { path -> String? in
             let itemURL = directoryURL.appendingPathComponent(path)
-            guard let xml = try? String(contentsOf: itemURL, encoding: .utf8) else { return nil }
-            return parseItem(xml)
+            return try? String(contentsOf: itemURL, encoding: .utf8)
         }
 
         // Many QTI packages (e.g. Canvas classic exports) embed every <item>
         // inline in a single assessment file instead of one file per question.
         // When no separate item files were referenced, parse the inline items.
+        var questions = itemXML.compactMap { parseItem($0) }
         if questions.isEmpty {
-            questions = inlineItems(in: assessment).compactMap { parseItem($0) }
+            itemXML = inlineItems(in: assessment)
+            questions = itemXML.compactMap { parseItem($0) }
         }
 
         guard !questions.isEmpty else { throw ImportError.noQuestionsFound }
-        let kind = detectSurvey(in: assessment, questions: questions) ? QuizKind.survey : .graded
+        let scoringXML = ([assessment] + itemXML).joined(separator: "\n")
+        let kind = detectSurvey(in: scoringXML, questions: questions) ? QuizKind.survey : .graded
         return Quiz(title: title.isEmpty ? "Imported Quiz" : title, questions: questions, kind: kind)
     }
 
-    /// A QTI 1.2 assessment is a survey when nothing in the package scores
-    /// anything: no `points_possible` per item, and no `<resprocessing>` block
-    /// anywhere. New Quizzes assessments use the same heuristic — surveys
-    /// export with no outcomeDeclaration and per-item response processing is
-    /// empty.
+    /// A QTI 1.2 package is a survey when nothing in it scores anything: no
+    /// `points_possible` on any item, and no `<resprocessing>` block anywhere.
+    /// The caller passes the assessment XML concatenated with every item file,
+    /// since one-item-per-file packages keep both signals in the item files.
+    /// New Quizzes packages use the same heuristic — surveys export with empty
+    /// per-item response processing.
     ///
-    /// The check operates on the raw assessment XML, not the parsed model, so
-    /// the per-question default `points: 1` doesn't cause every quiz to look
-    /// graded. The first question's `points_possible` qtimetadata field is the
-    /// authoritative Canvas signal.
-    private func detectSurvey(in assessment: String, questions: [QuizQuestion]) -> Bool {
-        let hasPoints = assessment.contains("points_possible")
-        let hasScoring = assessment.contains("<resprocessing>")
-            || assessment.contains("respcondition")
+    /// The check operates on the raw XML, not the parsed model, so the
+    /// per-question default `points: 1` doesn't make every quiz look graded.
+    /// An item's `points_possible` qtimetadata field is the authoritative
+    /// Canvas signal.
+    private func detectSurvey(in packageXML: String, questions: [QuizQuestion]) -> Bool {
+        let hasPoints = packageXML.contains("points_possible")
+        let hasScoring = packageXML.contains("<resprocessing>")
+            || packageXML.contains("respcondition")
         return !hasPoints && !hasScoring && !questions.isEmpty
     }
 
@@ -299,27 +302,20 @@ public struct QTIImporter: Sendable {
             return QuizQuestion(type: .fileUpload, prompt: prompt, feedback: qti21Feedback(in: xml), allowedFileTypes: Array(mimes))
         }
 
-        // Formula items in QTI 2.1 look like numeric items with a `formula`
-        // responseProcessing template. We don't try to round-trip the expression
-        // here — there's no canonical place for it in 2.1 — but we recover the
-        // computed answer and treat the item as a numeric with no spec. A
-        // round-trip would lose the formula, which is acceptable since most
-        // authors re-author formula questions rather than re-import them.
-        if let formulaTemplate = firstMatch(pattern: #"template=\"http://www\.imsglobal\.org/question/qti_v2p1/rptemplates/(formula|match_correct)\""#, in: xml),
-           formulaTemplate.contains("formula"),
-           xml.contains("textEntryInteraction") {
-            let value = matches(pattern: #"<correctResponse>[\s\S]*?<value>([^<]+)</value>"#, in: xml)
-                .first
-                .flatMap { Double($0.trimmingCharacters(in: .whitespaces)) }
+        // Numeric items in QTI 2.1: a text entry graded against a float. Formula
+        // items are written the same way (same interaction, same base type, same
+        // inline responseProcessing), because 2.1 has no canonical place to store
+        // an expression — so a formula deliberately comes back as a numeric
+        // carrying the same answer key. The expression is lost, which is
+        // acceptable since most authors re-author formula questions rather than
+        // re-import them. The float base type is what keeps fill-in-blank and
+        // short answer, which also use textEntryInteraction, out of this branch.
+        if xml.contains("textEntryInteraction"), isFloatResponse(in: xml) {
             return QuizQuestion(
-                type: .formula,
+                type: .numeric,
                 prompt: prompt,
                 feedback: qti21Feedback(in: xml),
-                formula: FormulaAnswer(
-                    expression: "",
-                    tolerance: 0,
-                    expectedUnit: nil
-                ).withComputedValue(value)
+                numeric: parseQTI21Numeric(in: xml)
             )
         }
 
@@ -330,6 +326,50 @@ public struct QTIImporter: Sendable {
         let cardinality = attribute("cardinality", in: xml)
         let type: QuizQuestionType = cardinality == "multiple" ? .multipleAnswer : .multipleChoice
         return QuizQuestion(type: answers.isEmpty ? .essay : type, prompt: prompt, answers: answers, feedback: qti21Feedback(in: xml))
+    }
+
+    /// True when the RESPONSE declaration is graded as a float — the marker that
+    /// separates a numeric/formula text entry from a string-graded one.
+    private func isFloatResponse(in xml: String) -> Bool {
+        guard let declaration = firstMatch(
+            pattern: #"<responseDeclaration\s+identifier=\"RESPONSE\"[^>]*>"#,
+            in: xml
+        ) else { return false }
+        return declaration.contains("baseType=\"float\"")
+    }
+
+    /// Recovers the grading spec from a QTI 2.1 numeric item's response
+    /// processing. A `gte`/`lte` pair is an accepted interval; an `equal` test is
+    /// an exact value. Both come back as `.exact` with a margin, since `.exact`
+    /// with a margin and `.range` produce identical XML and the mode itself
+    /// cannot be recovered. `correctResponse` supplies the centre when present so
+    /// the author's stated answer survives rather than a computed midpoint.
+    private func parseQTI21Numeric(in xml: String) -> NumericAnswer {
+        let correctResponse = matches(pattern: #"<correctResponse>[\s\S]*?<value>([^<]+)</value>"#, in: xml)
+            .first
+            .flatMap { Double($0.trimmingCharacters(in: .whitespaces)) }
+
+        // Scope the bounds to responseProcessing so no stray value elsewhere wins.
+        let processing = matches(pattern: #"<responseProcessing>([\s\S]*?)</responseProcessing>"#, in: xml).first ?? ""
+        let lowerBound = matches(pattern: #"<gte>[\s\S]*?<baseValue[^>]*>([^<]+)</baseValue>"#, in: processing)
+            .first
+            .flatMap { Double($0.trimmingCharacters(in: .whitespaces)) }
+        let upperBound = matches(pattern: #"<lte>[\s\S]*?<baseValue[^>]*>([^<]+)</baseValue>"#, in: processing)
+            .first
+            .flatMap { Double($0.trimmingCharacters(in: .whitespaces)) }
+
+        if let low = lowerBound, let high = upperBound {
+            let midpoint = (low + high) / 2
+            return NumericAnswer(mode: .exact, value: correctResponse ?? midpoint, margin: (high - low) / 2)
+        }
+
+        let exactValue = matches(pattern: #"<equal[^>]*>[\s\S]*?<baseValue[^>]*>([^<]+)</baseValue>"#, in: processing)
+            .first
+            .flatMap { Double($0.trimmingCharacters(in: .whitespaces)) }
+
+        // No gradeable condition at all: an unconfigured numeric, not an essay.
+        guard let value = exactValue ?? correctResponse else { return NumericAnswer(mode: .exact) }
+        return NumericAnswer(mode: .exact, value: value, margin: 0)
     }
 
     private func questionType(canvasType: String?) -> QuizQuestionType {

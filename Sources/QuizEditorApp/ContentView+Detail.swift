@@ -224,7 +224,7 @@ extension ContentView {
         QuizDocumentActions(
             isAIPanelVisible: isAIPanelVisible,
             hasQuestions: !quiz.questions.isEmpty,
-            exportQTIPackage: { engine in prepareExport(engine: engine) },
+            exportQTIPackage: { target in prepareExport(target: target) },
             exportFormattedDocument: { isFormattedDocumentPresented = true },
             exportPaperExam: { isPaperExamPresented = true },
             importMarkedText: { isImporterPresented = true },
@@ -494,7 +494,7 @@ extension ContentView {
         }
     }
 
-    func prepareExport(engine: CanvasQuizEngine) {
+    func prepareExport(target: QTIExportTarget) {
         let altIssues = QuizAccessibilityValidator().imagesMissingAltText(in: quiz)
         guard altIssues.isEmpty else {
             errorMessage = "Export blocked — add alt text first. \(altIssues.joined(separator: "; "))."
@@ -504,17 +504,17 @@ extension ContentView {
         // Validate the package (well-formed XML, manifest consistency, and a
         // re-import round-trip). Clean packages export straight away; otherwise the
         // findings are shown first so the user can fix them or proceed anyway.
-        let validationIssues = QTIValidator().validateExport(of: quiz, engine: engine)
+        let validationIssues = QTIValidator().validateExport(of: quiz, target: target)
         if validationIssues.isEmpty {
-            finishExport(engine: engine)
+            finishExport(target: target)
         } else {
-            qtiValidation = QTIValidationContext(engine: engine, issues: validationIssues)
+            qtiValidation = QTIValidationContext(target: target, issues: validationIssues)
         }
     }
 
-    func finishExport(engine: CanvasQuizEngine) {
+    func finishExport(target: QTIExportTarget) {
         do {
-            exportDocument = try QTIArchiveDocument(quiz: quiz, engine: engine)
+            exportDocument = try QTIArchiveDocument(quiz: quiz, target: target)
             isExporterPresented = true
         } catch {
             errorMessage = "Export failed: \(error.localizedDescription)"

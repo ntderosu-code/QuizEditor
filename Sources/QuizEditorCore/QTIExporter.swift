@@ -1,20 +1,36 @@
 import Foundation
 
-public enum CanvasQuizEngine: String, CaseIterable, Identifiable, Codable, Sendable {
-    case classicQuizzes
-    case newQuizzes
-    /// Canvas Surveys are exported as QTI 1.2 (the only Canvas survey QTI path
-    /// that round-trips reliably). Survey items strip resprocessing so Canvas
-    /// scores no answers.
-    case surveys
+/// Which QTI standard an export is written against.
+///
+/// Named for the standard rather than for Canvas, because QTI is what the file
+/// actually is: Moodle, Blackboard, and D2L consume these packages too. The
+/// Canvas engine each target corresponds to is kept in the display name, since
+/// that is how Canvas users pick.
+///
+/// The raw values are the original Canvas engine names and are **pinned**: they
+/// are the persisted spelling of this choice, so they must not change even
+/// though the case names have.
+public enum QTIExportTarget: String, CaseIterable, Identifiable, Codable, Sendable {
+    /// QTI 1.2. The higher-fidelity target: 1.2's `qtimetadata` gives author
+    /// metadata and formula expressions a legal home, so they survive a
+    /// round-trip.
+    case qti12 = "classicQuizzes"
+    /// QTI 2.1. Has no metadata escape hatch, so a formula's expression cannot
+    /// be written and is lost on re-import. See `formatFidelityIssues`.
+    case qti21 = "newQuizzes"
+    /// QTI 1.2 with scoring stripped. Survey items omit `resprocessing` so the
+    /// LMS scores no answers. (Canvas Surveys are the only Canvas survey QTI
+    /// path that round-trips reliably, which is why this is 1.2.)
+    case qti12Survey = "surveys"
 
     public var id: String { rawValue }
 
+    /// Leads with the standard, names the Canvas engine second.
     public var displayName: String {
         switch self {
-        case .classicQuizzes: "Classic Quizzes (QTI 1.2)"
-        case .newQuizzes: "New Quizzes (QTI 2.1)"
-        case .surveys: "Surveys (QTI 1.2)"
+        case .qti12: "QTI 1.2 (Classic Quizzes)"
+        case .qti21: "QTI 2.1 (New Quizzes)"
+        case .qti12Survey: "QTI 1.2 Survey (ungraded)"
         }
     }
 }
@@ -41,7 +57,7 @@ public struct QTIPackageFile: Equatable, Sendable {
     }
 }
 
-public struct CanvasQTIExporter: Sendable {
+public struct QTIExporter: Sendable {
     public enum ExportError: UserFacingError, Equatable {
         case emptyQuizTitle
         case noQuestions
@@ -54,11 +70,11 @@ public struct CanvasQTIExporter: Sendable {
         }
     }
 
-    private let engine: CanvasQuizEngine
+    private let target: QTIExportTarget
     private let html = HTMLUtilities()
 
-    public init(engine: CanvasQuizEngine = .classicQuizzes) {
-        self.engine = engine
+    public init(target: QTIExportTarget = .qti12) {
+        self.target = target
     }
 
     /// Produces well-formed XHTML for QTI 2.1 bodies, falling back to escaped
@@ -73,14 +89,14 @@ public struct CanvasQTIExporter: Sendable {
         }
         guard !quiz.questions.isEmpty else { throw ExportError.noQuestions }
 
-        switch engine {
-        case .classicQuizzes, .surveys:
+        switch target {
+        case .qti12, .qti12Survey:
             // Surveys reuse the QTI 1.2 layout; per-item resprocessing is stripped
             // inside `classicItemXML(for:index:ungraded:)`.
-            let ungraded = (engine == .surveys) || (quiz.kind == .survey)
+            let ungraded = (target == .qti12Survey) || (quiz.kind == .survey)
             return QTIPackage(files: classicPackageFiles(for: quiz, ungraded: ungraded))
-        case .newQuizzes:
-            return QTIPackage(files: newQuizzesPackageFiles(for: quiz, ungraded: quiz.kind == .survey))
+        case .qti21:
+            return QTIPackage(files: qti21PackageFiles(for: quiz, ungraded: quiz.kind == .survey))
         }
     }
 
@@ -97,10 +113,10 @@ public struct CanvasQTIExporter: Sendable {
         return files
     }
 
-    private func newQuizzesPackageFiles(for quiz: Quiz, ungraded: Bool = false) -> [QTIPackageFile] {
+    private func qti21PackageFiles(for quiz: Quiz, ungraded: Bool = false) -> [QTIPackageFile] {
         var files = [
-            QTIPackageFile(path: "imsmanifest.xml", contents: newQuizzesManifestXML(for: quiz)),
-            QTIPackageFile(path: "assessment.xml", contents: newQuizzesAssessmentXML(for: quiz))
+            QTIPackageFile(path: "imsmanifest.xml", contents: qti21ManifestXML(for: quiz)),
+            QTIPackageFile(path: "assessment.xml", contents: qti21AssessmentXML(for: quiz))
         ]
 
         for (index, question) in quiz.questions.enumerated() {
@@ -138,7 +154,7 @@ public struct CanvasQTIExporter: Sendable {
         """
     }
 
-    private func newQuizzesManifestXML(for quiz: Quiz) -> String {
+    private func qti21ManifestXML(for quiz: Quiz) -> String {
         let itemResources = quiz.questions.indices.map { index in
             let number = index + 1
             return """
@@ -189,7 +205,7 @@ public struct CanvasQTIExporter: Sendable {
         """
     }
 
-    private func newQuizzesAssessmentXML(for quiz: Quiz) -> String {
+    private func qti21AssessmentXML(for quiz: Quiz) -> String {
         let itemReferences = quiz.questions.indices.map { index in
             let number = index + 1
             return """
@@ -805,38 +821,19 @@ public struct CanvasQTIExporter: Sendable {
         value.rounded() == value ? String(Int(value)) : String(value)
     }
 
-    /// Optional Canvas-tolerated metadata fields for tags, difficulty, and the
-    /// formula spec. Canvas ignores fields it doesn't recognize, so this is safe
-    /// to always emit when the question carries the metadata. Formula items
-    /// additionally need the expression and variable values so Canvas can
-    /// re-evaluate the answer server-side.
+    /// The only per-item metadata the package carries: the formula spec.
     ///
-    /// Stimulus linking is author metadata and is **not** exported: the
-    /// `stimulus`/`stimulus_body` fields would carry passage text that Canvas's
-    /// `calculations`/survey APIs don't have a place for in a one-item-per-file
-    /// QTI package. The linking is preserved on the model and reappears on
-    /// import via the `stimulus` qtimetadata field (which Canvas ignores) so
-    /// round-trips through the editor don't lose the link.
+    /// Formula items need the expression and variable values so Canvas can
+    /// re-evaluate the answer server-side, which makes this answer-key data, not
+    /// authoring notes.
+    ///
+    /// Author metadata is deliberately absent. Tags, difficulty, and the linking
+    /// fields (objectives, sources, stimuli, competencies) are tool-only: they
+    /// describe how the author works, not how the item is graded, and no importer
+    /// reads them back. Writing them only leaked authoring notes into a file
+    /// handed to an LMS.
     private func metadataFields(for question: QuizQuestion) -> String {
         var fields: [String] = []
-        if let difficulty = question.difficulty {
-            fields.append("""
-
-                        <qtimetadatafield>
-                            <fieldlabel>difficulty</fieldlabel>
-                            <fieldentry>\(xmlEscape(difficulty.rawValue))</fieldentry>
-                        </qtimetadatafield>
-            """)
-        }
-        if !question.tags.isEmpty {
-            fields.append("""
-
-                        <qtimetadatafield>
-                            <fieldlabel>tags</fieldlabel>
-                            <fieldentry>\(xmlEscape(question.tags.joined(separator: ", ")))</fieldentry>
-                        </qtimetadatafield>
-            """)
-        }
         if let formula = question.formula {
             let variablesXML = formula.variables
                 .map { "<variable name=\"\(xmlEscape($0.name))\">\(formatNumber($0.value))</variable>" }

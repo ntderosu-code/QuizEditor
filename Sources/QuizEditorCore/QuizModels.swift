@@ -122,9 +122,9 @@ public struct QuizQuestion: Equatable, Codable, Identifiable, Sendable {
     public var numeric: NumericAnswer?
     /// Grading spec for a `.formula` question; nil for every other type.
     public var formula: FormulaAnswer?
-    /// Optional MIME-type allowlist for `.fileUpload` questions; nil/empty means
-    /// any type. Author metadata — never exported (Canvas defaults to "any file"
-    /// when this is absent).
+    /// Optional MIME-type allowlist for `.fileUpload` questions; empty means any
+    /// type. This one *is* exported: Canvas reads it to constrain the upload
+    /// widget, and defaults to "any file" when it is absent.
     public var allowedFileTypes: [String]
 
     public init(

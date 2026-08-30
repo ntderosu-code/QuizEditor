@@ -135,7 +135,7 @@ struct ContentView: View {
     @State var importPickerContext: ImportPickerContext?
     @State var pendingImport: PendingImport?
     @State var qtiValidation: QTIValidationContext?
-    @State var pendingExportEngine: CanvasQuizEngine?
+    @State var pendingExportTarget: QTIExportTarget?
     @State var isIMSCCImporterPresented = false
     @EnvironmentObject var personaStore: PersonaStore
     @AppStorage("personaID") var appDefaultPersonaID = Persona.generalID
@@ -268,9 +268,9 @@ struct ContentView: View {
             ToolbarItem {
                 Menu {
                     Section("QTI Package") {
-                        ForEach(CanvasQuizEngine.allCases) { engine in
-                            Button(engine.displayName) {
-                                prepareExport(engine: engine)
+                        ForEach(QTIExportTarget.allCases) { target in
+                            Button(target.displayName) {
+                                prepareExport(target: target)
                             }
                         }
                     }
@@ -461,13 +461,13 @@ struct ContentView: View {
         .sheet(item: $qtiValidation, onDismiss: {
             // Run the export only after the validation sheet has fully dismissed,
             // so the file exporter doesn't fight a still-closing sheet.
-            if let engine = pendingExportEngine {
-                pendingExportEngine = nil
-                finishExport(engine: engine)
+            if let target = pendingExportTarget {
+                pendingExportTarget = nil
+                finishExport(target: target)
             }
         }) { context in
-            QTIValidationSheet(engineName: context.engine.displayName, issues: context.issues) {
-                pendingExportEngine = context.engine
+            QTIValidationSheet(targetName: context.target.displayName, issues: context.issues) {
+                pendingExportTarget = context.target
             }
         }
         // Scene-scoped, not view-scoped: with .focusedValue these go nil the
@@ -702,8 +702,8 @@ struct QTIArchiveDocument: FileDocument {
         self.data = data
     }
 
-    init(quiz: Quiz, engine: CanvasQuizEngine) throws {
-        self.data = try QTIPackageWriter(engine: engine).makeZipData(for: quiz)
+    init(quiz: Quiz, target: QTIExportTarget) throws {
+        self.data = try QTIPackageWriter(target: target).makeZipData(for: quiz)
     }
 
     init(configuration: ReadConfiguration) throws {

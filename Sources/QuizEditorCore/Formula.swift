@@ -53,24 +53,6 @@ public struct FormulaAnswer: Codable, Sendable, Equatable {
         FormulaEvaluator.evaluate(expression: expression, variables: variables)
     }
 
-    /// Build a `FormulaAnswer` carrying a known computed value but no expression
-    /// or variables. Used on import when only the precomputed value is recoverable
-    /// (e.g. QTI 2.1 has no canonical place to store the expression).
-    public func withComputedValue(_ value: Double?) -> FormulaAnswer {
-        guard let value else { return self }
-        // Encode the value as a single self-referential variable so the evaluator
-        // path stays a single source of truth.
-        if expression.isEmpty && variables.isEmpty {
-            return FormulaAnswer(
-                variables: [FormulaVariable(name: "_v", value: value)],
-                expression: "_v",
-                tolerance: tolerance,
-                expectedUnit: expectedUnit
-            )
-        }
-        return self
-    }
-
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         variables = try c.decodeIfPresent([FormulaVariable].self, forKey: .variables) ?? []

@@ -2,7 +2,33 @@ import XCTest
 @testable import QuizEditorCore
 
 final class QTIExporterTests: XCTestCase {
-    func testClassicItemCarriesPointsTagsAndDifficultyMetadata() throws {
+
+    // MARK: - Export target naming
+
+    /// The raw values are the persisted spelling of the export choice and predate
+    /// the rename away from Canvas engine names. Changing one silently
+    /// invalidates any stored selection, so they are pinned here.
+    func testExportTargetRawValuesArePinnedToTheOriginalEngineNames() {
+        XCTAssertEqual(QTIExportTarget.qti12.rawValue, "classicQuizzes")
+        XCTAssertEqual(QTIExportTarget.qti21.rawValue, "newQuizzes")
+        XCTAssertEqual(QTIExportTarget.qti12Survey.rawValue, "surveys")
+    }
+
+    /// Labels lead with the QTI standard, because that is what the file is —
+    /// Moodle, Blackboard, and D2L read these packages too. The Canvas engine
+    /// stays in the name so Canvas users still recognise their option.
+    func testExportTargetLabelsLeadWithTheQTIVersion() {
+        for target in QTIExportTarget.allCases {
+            XCTAssertTrue(
+                target.displayName.hasPrefix("QTI "),
+                "\(target) label should lead with the QTI version, got \(target.displayName)"
+            )
+        }
+        XCTAssertEqual(QTIExportTarget.qti12.displayName, "QTI 1.2 (Classic Quizzes)")
+        XCTAssertEqual(QTIExportTarget.qti21.displayName, "QTI 2.1 (New Quizzes)")
+    }
+
+    func testClassicItemCarriesPointsButNotAuthorMetadata() throws {
         let quiz = Quiz(title: "Meta", questions: [
             QuizQuestion(
                 type: .multipleChoice,
@@ -14,15 +40,40 @@ final class QTIExporterTests: XCTestCase {
             )
         ])
 
-        let package = try CanvasQTIExporter(engine: .classicQuizzes).makePackage(for: quiz)
+        let package = try QTIExporter(target: .qti12).makePackage(for: quiz)
         let item = try XCTUnwrap(package.file(named: "items/question-1.xml")).contents
 
+        // Points are gradeable, so they belong in the package.
         XCTAssertTrue(item.contains("<fieldlabel>points_possible</fieldlabel>"))
         XCTAssertTrue(item.contains("<fieldentry>3</fieldentry>"))
-        XCTAssertTrue(item.contains("<fieldlabel>difficulty</fieldlabel>"))
-        XCTAssertTrue(item.contains("<fieldentry>hard</fieldentry>"))
-        XCTAssertTrue(item.contains("<fieldlabel>tags</fieldlabel>"))
-        XCTAssertTrue(item.contains("cells, energy"))
+
+        // Tags and difficulty are author metadata: tool-only, never exported.
+        // Nothing reads them back on import, so writing them only leaked
+        // authoring notes into a file handed to an LMS.
+        XCTAssertFalse(item.contains("<fieldlabel>difficulty</fieldlabel>"))
+        XCTAssertFalse(item.contains("<fieldentry>hard</fieldentry>"))
+        XCTAssertFalse(item.contains("<fieldlabel>tags</fieldlabel>"))
+        XCTAssertFalse(item.contains("cells, energy"))
+    }
+
+    /// The exclusion holds for every target, not just classic.
+    func testAuthorMetadataIsExcludedFromEveryTarget() throws {
+        let quiz = Quiz(title: "Metadata", questions: [
+            QuizQuestion(
+                type: .multipleChoice,
+                prompt: "Q?",
+                answers: [QuizAnswer(text: "A", isCorrect: true)],
+                tags: ["cells", "energy"],
+                difficulty: .hard
+            )
+        ])
+
+        for target in QTIExportTarget.allCases {
+            let package = try QTIExporter(target: target).makePackage(for: quiz)
+            let everything = package.files.map(\.contents).joined()
+            XCTAssertFalse(everything.contains("difficulty"), "difficulty leaked into \(target) export")
+            XCTAssertFalse(everything.contains("cells, energy"), "tags leaked into \(target) export")
+        }
     }
 
     func testBuildsCanvasQTIPackageWithManifestAssessmentItemsAnswersAndFeedback() throws {
@@ -47,7 +98,7 @@ final class QTIExporterTests: XCTestCase {
             ]
         )
 
-        let package = try CanvasQTIExporter().makePackage(for: quiz)
+        let package = try QTIExporter().makePackage(for: quiz)
 
         XCTAssertEqual(Set(package.files.map(\.path)), [
             "imsmanifest.xml",
@@ -93,7 +144,7 @@ final class QTIExporterTests: XCTestCase {
             ]
         )
 
-        let package = try CanvasQTIExporter(engine: .newQuizzes).makePackage(for: quiz)
+        let package = try QTIExporter(target: .qti21).makePackage(for: quiz)
 
         let manifest = try XCTUnwrap(package.file(named: "imsmanifest.xml"))
         XCTAssertTrue(manifest.contents.contains("imsqti_item_xmlv2p1"))
@@ -138,7 +189,7 @@ final class QTIExporterTests: XCTestCase {
             kind: .survey
         )
 
-        let package = try CanvasQTIExporter(engine: .surveys).makePackage(for: quiz)
+        let package = try QTIExporter(target: .qti12Survey).makePackage(for: quiz)
         let item = try XCTUnwrap(package.file(named: "items/question-1.xml")).contents
 
         XCTAssertTrue(item.contains("multiple_choice_question"))
@@ -148,13 +199,13 @@ final class QTIExporterTests: XCTestCase {
     }
 
     func testGradedQuizExportedAsSurveyEngineAlsoStripsScoring() throws {
-        // Forcing the .surveys engine produces an ungraded package even when
+        // Forcing the .qti12Survey target produces an ungraded package even when
         // the quiz is .graded — useful for one-off survey exports.
         let quiz = Quiz(title: "Graded content", questions: [
             QuizQuestion(type: .multipleChoice, prompt: "Pick A", answers: [QuizAnswer(text: "A", isCorrect: true)])
         ])
 
-        let package = try CanvasQTIExporter(engine: .surveys).makePackage(for: quiz)
+        let package = try QTIExporter(target: .qti12Survey).makePackage(for: quiz)
         let item = try XCTUnwrap(package.file(named: "items/question-1.xml")).contents
 
         XCTAssertFalse(item.contains("<resprocessing>"))
@@ -172,14 +223,14 @@ final class QTIExporterTests: XCTestCase {
         )
         let quiz = Quiz(title: "File upload", questions: [question])
 
-        let classic = try CanvasQTIExporter(engine: .classicQuizzes).makePackage(for: quiz)
+        let classic = try QTIExporter(target: .qti12).makePackage(for: quiz)
         let classicItem = try XCTUnwrap(classic.file(named: "items/question-1.xml")).contents
         XCTAssertTrue(classicItem.contains("file_upload_question"))
         XCTAssertTrue(classicItem.contains("response_str"), "Classic file uploads use response_str type=file")
         XCTAssertTrue(classicItem.contains("fibtype=\"File\""))
         XCTAssertTrue(classicItem.contains("application/pdf"))
 
-        let newQ = try CanvasQTIExporter(engine: .newQuizzes).makePackage(for: quiz)
+        let newQ = try QTIExporter(target: .qti21).makePackage(for: quiz)
         let newItem = try XCTUnwrap(newQ.file(named: "items/question-1.xml")).contents
         XCTAssertTrue(newItem.contains("uploadInteraction"))
         XCTAssertTrue(newItem.contains("expectedMimeTypes"))
@@ -189,7 +240,7 @@ final class QTIExporterTests: XCTestCase {
     func testFileUploadMimeListStaysOutWhenEmpty() throws {
         let question = QuizQuestion(type: .fileUpload, prompt: "Upload anything.")
         let quiz = Quiz(title: "T", questions: [question])
-        let package = try CanvasQTIExporter(engine: .newQuizzes).makePackage(for: quiz)
+        let package = try QTIExporter(target: .qti21).makePackage(for: quiz)
         let item = try XCTUnwrap(package.file(named: "items/question-1.xml")).contents
         XCTAssertTrue(item.contains("uploadInteraction"))
         XCTAssertFalse(item.contains("expectedMimeTypes"))
@@ -209,7 +260,7 @@ final class QTIExporterTests: XCTestCase {
         )
         let quiz = Quiz(title: "Physics", questions: [question])
 
-        let package = try CanvasQTIExporter(engine: .classicQuizzes).makePackage(for: quiz)
+        let package = try QTIExporter(target: .qti12).makePackage(for: quiz)
         let item = try XCTUnwrap(package.file(named: "items/question-1.xml")).contents
 
         XCTAssertTrue(item.contains("calculated_question"))
@@ -230,7 +281,7 @@ final class QTIExporterTests: XCTestCase {
         let question = QuizQuestion(type: .formula, prompt: "Compute.", formula: formula)
         let quiz = Quiz(title: "T", questions: [question])
 
-        let package = try CanvasQTIExporter(engine: .newQuizzes).makePackage(for: quiz)
+        let package = try QTIExporter(target: .qti21).makePackage(for: quiz)
         let item = try XCTUnwrap(package.file(named: "items/question-1.xml")).contents
 
         XCTAssertTrue(item.contains("assessmentItem"))
@@ -259,7 +310,7 @@ final class QTIExporterTests: XCTestCase {
         let quiz = Quiz(title: "Physics", questions: [
             QuizQuestion(type: .formula, prompt: "F = ?", formula: formula)
         ])
-        let package = try CanvasQTIExporter().makePackage(for: quiz)
+        let package = try QTIExporter().makePackage(for: quiz)
         let everything = package.files.map(\.contents).joined(separator: "\n")
         XCTAssertFalse(everything.contains("NEWTON_TOKEN"))
     }

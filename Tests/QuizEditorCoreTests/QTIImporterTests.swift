@@ -19,7 +19,7 @@ final class QTIImporterTests: XCTestCase {
         )
         let archiveURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".zip")
         defer { try? FileManager.default.removeItem(at: archiveURL) }
-        try QTIPackageWriter(engine: .classicQuizzes).writeZip(for: original, to: archiveURL)
+        try QTIPackageWriter(target: .qti12).writeZip(for: original, to: archiveURL)
 
         let imported = try QTIImporter().importQuiz(fromZipAt: archiveURL)
 
@@ -114,7 +114,7 @@ final class QTIImporterTests: XCTestCase {
         )
         let archiveURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".zip")
         defer { try? FileManager.default.removeItem(at: archiveURL) }
-        try QTIPackageWriter(engine: .newQuizzes).writeZip(for: original, to: archiveURL)
+        try QTIPackageWriter(target: .qti21).writeZip(for: original, to: archiveURL)
 
         let imported = try QTIImporter().importQuiz(fromZipAt: archiveURL)
 
@@ -268,7 +268,7 @@ final class QTIImporterTests: XCTestCase {
         ])
         let archiveURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".zip")
         defer { try? FileManager.default.removeItem(at: archiveURL) }
-        try QTIPackageWriter(engine: .classicQuizzes).writeZip(for: quiz, to: archiveURL)
+        try QTIPackageWriter(target: .qti12).writeZip(for: quiz, to: archiveURL)
 
         let imported = try QTIImporter().importQuiz(fromZipAt: archiveURL)
 
@@ -446,6 +446,118 @@ final class QTIImporterTests: XCTestCase {
 
         let quiz = try QTIImporter().importQuiz(fromDirectory: dir)
         XCTAssertEqual(quiz.kind, .graded)
+    }
+
+    // MARK: - QTI 2.1 numeric and formula round-trips
+
+    /// A New Quizzes (QTI 2.1) numeric export must come back as a graded numeric.
+    /// Before this, `parseQTI21Item` had no numeric branch, so the item fell
+    /// through to the multiple-choice tail, found no `simpleChoice`, and became
+    /// an answerless essay.
+    func testImportsQTI21NumericExactValueWithMargin() throws {
+        let quiz = Quiz(title: "Physics", questions: [
+            QuizQuestion(
+                type: .numeric,
+                prompt: "Acceleration due to gravity?",
+                numeric: NumericAnswer(mode: .exact, value: 9.8, margin: 0.1)
+            )
+        ])
+        let question = try roundTripThroughNewQuizzes(quiz)
+
+        XCTAssertEqual(question.type, .numeric)
+        XCTAssertEqual(question.numeric?.mode, .exact)
+        XCTAssertEqual(try XCTUnwrap(question.numeric?.value), 9.8, accuracy: 0.0001)
+        XCTAssertEqual(try XCTUnwrap(question.numeric?.margin), 0.1, accuracy: 0.0001)
+        let interval = try XCTUnwrap(question.numeric?.acceptedInterval)
+        XCTAssertEqual(interval.low, 9.7, accuracy: 0.0001)
+        XCTAssertEqual(interval.high, 9.9, accuracy: 0.0001)
+    }
+
+    /// A range item exports as the same `gte`/`lte` pair as an exact value with a
+    /// margin, so the *mode* can't be recovered from QTI 2.1 — only the accepted
+    /// interval can. It comes back as an equivalent exact-plus-margin spec, which
+    /// grades identically.
+    func testImportsQTI21NumericRangeAsAnEquivalentInterval() throws {
+        let quiz = Quiz(title: "Physics", questions: [
+            QuizQuestion(
+                type: .numeric,
+                prompt: "A plausible pH for rain?",
+                numeric: NumericAnswer(mode: .range, rangeMin: 5.0, rangeMax: 6.5)
+            )
+        ])
+        let question = try roundTripThroughNewQuizzes(quiz)
+
+        XCTAssertEqual(question.type, .numeric)
+        let interval = try XCTUnwrap(question.numeric?.acceptedInterval)
+        XCTAssertEqual(interval.low, 5.0, accuracy: 0.0001)
+        XCTAssertEqual(interval.high, 6.5, accuracy: 0.0001)
+    }
+
+    /// A numeric item with nothing to grade against still imports as a numeric,
+    /// not as an essay. The spec comes back unconfigured.
+    func testImportsQTI21NumericWithoutGradingSpecAsUnconfiguredNumeric() throws {
+        let quiz = Quiz(title: "Physics", questions: [
+            QuizQuestion(type: .numeric, prompt: "Estimate the mass.", numeric: NumericAnswer(mode: .exact))
+        ])
+        let question = try roundTripThroughNewQuizzes(quiz)
+
+        XCTAssertEqual(question.type, .numeric)
+        XCTAssertEqual(question.numeric?.isConfigured, false)
+    }
+
+    /// QTI 2.1 has no canonical slot for a formula expression, and this exporter
+    /// writes formula items with exactly the same interaction, base type, and
+    /// inline `responseProcessing` as a numeric. So a formula export deliberately
+    /// degrades to a *graded numeric* on re-import: the answer key survives, the
+    /// expression does not. It must not come back as an answerless essay.
+    func testQTI21FormulaExportDegradesToGradedNumeric() throws {
+        let quiz = Quiz(title: "Physics", questions: [
+            QuizQuestion(
+                type: .formula,
+                prompt: "Compute F = m * a.",
+                formula: FormulaAnswer(
+                    variables: [FormulaVariable(name: "m", value: 2), FormulaVariable(name: "a", value: 9.8)],
+                    expression: "m * a",
+                    tolerance: 0.5
+                )
+            )
+        ])
+        let question = try roundTripThroughNewQuizzes(quiz)
+
+        XCTAssertEqual(question.type, .numeric)
+        XCTAssertEqual(question.numeric?.mode, .exact)
+        XCTAssertEqual(try XCTUnwrap(question.numeric?.value), 19.6, accuracy: 0.0001)
+        XCTAssertEqual(try XCTUnwrap(question.numeric?.margin), 0.5, accuracy: 0.0001)
+    }
+
+    /// The float base type is what separates a numeric from the other items that
+    /// also use `textEntryInteraction`. Short answer must stay short answer.
+    func testQTI21ShortAnswerIsNotMistakenForNumeric() throws {
+        let quiz = Quiz(title: "Vocab", questions: [
+            QuizQuestion(
+                type: .shortAnswer,
+                prompt: "Name the process.",
+                answers: [QuizAnswer(text: "photosynthesis", isCorrect: true)]
+            )
+        ])
+        let question = try roundTripThroughNewQuizzes(quiz)
+
+        XCTAssertNotEqual(question.type, .numeric)
+    }
+
+    /// Exports the quiz as New Quizzes (QTI 2.1), writes the package to disk, and
+    /// imports it back — the same path a user takes exporting then re-importing.
+    private func roundTripThroughNewQuizzes(_ quiz: Quiz) throws -> QuizQuestion {
+        let package = try QTIExporter(target: .qti21).makePackage(for: quiz)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try FileManager.default.createDirectory(at: directory.appendingPathComponent("items"), withIntermediateDirectories: true)
+        for file in package.files {
+            try file.contents.write(to: directory.appendingPathComponent(file.path), atomically: true, encoding: .utf8)
+        }
+
+        let sections = try QTIImporter().importSections(fromDirectory: directory)
+        return try XCTUnwrap(sections.first?.questions.first)
     }
 
     private func writePackage(manifest: String, files: [(String, String)]) throws -> URL {

@@ -135,7 +135,7 @@ guards then run automatically).
 
 ```
 Sources/QuizEditorCore/   logic + models (QuizModels, Persona, QuestionLinter,
-                          Linking, Framework, Numeric, CanvasQTIExporter,
+                          Linking, Framework, Numeric, QTIExporter,
                           QTIImporter, DisciplinePersonas, *Service, MarkedTextParser)
 Sources/QuizEditorApp/    SwiftUI app, stores, views (split by feature)
 Tests/QuizEditorCoreTests/ the test suite

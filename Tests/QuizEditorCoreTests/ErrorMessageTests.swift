@@ -69,11 +69,11 @@ final class ErrorMessageTests: XCTestCase {
 
     func testExportErrorsReadAsSentences() {
         assertUserFacing(
-            CanvasQTIExporter.ExportError.emptyQuizTitle,
+            QTIExporter.ExportError.emptyQuizTitle,
             equals: "The quiz needs a title before it can be exported."
         )
         assertUserFacing(
-            CanvasQTIExporter.ExportError.noQuestions,
+            QTIExporter.ExportError.noQuestions,
             equals: "The quiz has no questions to export."
         )
     }

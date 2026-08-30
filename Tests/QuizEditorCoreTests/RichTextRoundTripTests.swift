@@ -28,7 +28,7 @@ final class RichTextRoundTripTests: XCTestCase {
     )
 
     func testClassicExportImportPreservesFormatting() throws {
-        let package = try CanvasQTIExporter(engine: .classicQuizzes).makePackage(for: richQuiz)
+        let package = try QTIExporter(target: .qti12).makePackage(for: richQuiz)
         let directory = try writePackage(package)
         defer { try? FileManager.default.removeItem(at: directory) }
 
@@ -40,7 +40,7 @@ final class RichTextRoundTripTests: XCTestCase {
     }
 
     func testPlainImportStripsFormatting() throws {
-        let package = try CanvasQTIExporter(engine: .classicQuizzes).makePackage(for: richQuiz)
+        let package = try QTIExporter(target: .qti12).makePackage(for: richQuiz)
         let directory = try writePackage(package)
         defer { try? FileManager.default.removeItem(at: directory) }
 
@@ -52,7 +52,7 @@ final class RichTextRoundTripTests: XCTestCase {
     }
 
     func testNewQuizzesExportEmbedsWellFormedXHTML() throws {
-        let package = try CanvasQTIExporter(engine: .newQuizzes).makePackage(for: richQuiz)
+        let package = try QTIExporter(target: .qti21).makePackage(for: richQuiz)
         let item = try XCTUnwrap(package.file(named: "items/question-1.xml"))
 
         // The emphasis markup survives as real XHTML elements (not escaped text).
@@ -63,7 +63,7 @@ final class RichTextRoundTripTests: XCTestCase {
     }
 
     func testClassicExportEscapesHTMLForTransport() throws {
-        let package = try CanvasQTIExporter(engine: .classicQuizzes).makePackage(for: richQuiz)
+        let package = try QTIExporter(target: .qti12).makePackage(for: richQuiz)
         let item = try XCTUnwrap(package.file(named: "items/question-1.xml"))
 
         // Classic carries HTML entity-escaped inside text/html mattext.
