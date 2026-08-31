@@ -66,4 +66,20 @@ final class HTMLUtilitiesTests: XCTestCase {
         XCTAssertEqual(issues.count, 1)
         XCTAssertTrue(issues[0].contains("Question 2"))
     }
+
+    func testValidatorFindsStimulusFigureMissingAlt() {
+        let quiz = Quiz(
+            title: "T",
+            questions: [QuizQuestion(type: .multipleChoice, prompt: "Q", answers: [QuizAnswer(text: "A", isCorrect: true)])],
+            stimuli: [
+                Stimulus(id: "s1", body: "An X-ray", figureImage: "data:image/png;base64,AAAA", altText: nil),
+                Stimulus(id: "s2", body: "A diagram", figureImage: "data:image/png;base64,BBBB", altText: "Diagram of the cell")
+            ]
+        )
+
+        let issues = QuizAccessibilityValidator().imagesMissingAltText(in: quiz)
+        XCTAssertEqual(issues.count, 1, "Only the stimulus without alt text should be flagged")
+        XCTAssertTrue(issues[0].contains("Stimulus 1"))
+        XCTAssertTrue(issues[0].contains("alt text"))
+    }
 }

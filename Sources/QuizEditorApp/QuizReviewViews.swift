@@ -155,8 +155,8 @@ struct QuestionReviewDetail: View {
     private var emptyStateText: String {
         switch focus {
         case .feedback: "Feedback already looks complete for this question."
-        case .revisions: "No rewrites suggested — this question already reads well."
-        case .full: "No rewrites suggested — this question already reads well."
+        case .revisions: "No rewrites suggested. This question already reads well."
+        case .full: "No rewrites suggested. This question already reads well."
         }
     }
 
@@ -294,11 +294,11 @@ struct QuizReviewSheet: View {
         let plural = total == 1 ? "" : "s"
         switch focus {
         case .feedback:
-            return "Drafted feedback for \(scope) question\(plural) — \(needEdits) ready to apply, \(clean) already complete."
+            return "Drafted feedback for \(scope) question\(plural): \(needEdits) ready to apply, \(clean) already complete."
         case .revisions:
-            return "Suggested revisions for \(scope) question\(plural) — \(needEdits) with edits to apply, \(clean) look clean."
+            return "Suggested revisions for \(scope) question\(plural): \(needEdits) with edits to apply, \(clean) look clean."
         case .full:
-            return "Reviewed \(scope) question\(plural) — \(needEdits) with suggested edits, \(clean) look clean."
+            return "Reviewed \(scope) question\(plural): \(needEdits) with suggested edits, \(clean) look clean."
         }
     }
 
@@ -404,7 +404,7 @@ struct QuizReviewSheet: View {
     private func pageRangeLabel(_ page: Int) -> String {
         let slice = questionsForPage(page)
         guard let first = slice.first?.index, let last = slice.last?.index else { return "" }
-        return first == last ? "\(first + 1)" : "\(first + 1)–\(last + 1)"
+        return first == last ? "\(first + 1)" : "\(first + 1) to \(last + 1)"
     }
 
     private func goTo(_ page: Int) {

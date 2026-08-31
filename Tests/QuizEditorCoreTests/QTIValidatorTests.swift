@@ -113,4 +113,36 @@ final class QTIValidatorTests: XCTestCase {
         let issues = validator.manifestConsistencyIssues(in: package, expectedItemCount: 0)
         XCTAssertTrue(issues.contains { $0.severity == .error && $0.message.contains("imsmanifest.xml") })
     }
+
+    // MARK: - Target-compatibility advisories
+
+    func testSurveyQuizExportedAsNewQuizzesWarns() {
+        // Canvas Surveys are a QTI 1.2-only Canvas feature. Exporting to New
+        // Quizzes (qti21) is a no-op for the survey flag. The author should
+        // know the receiving engine doesn't have a survey type.
+        let survey = Quiz(
+            title: "Course eval",
+            questions: [QuizQuestion(type: .multipleChoice, prompt: "Pace?", answers: [QuizAnswer(text: "OK")])],
+            kind: .survey
+        )
+        let issues = validator.validateExport(of: survey, target: .qti21)
+        XCTAssertTrue(issues.contains { $0.severity == QTIValidationIssue.Severity.warning && $0.message.lowercased().contains("survey") })
+    }
+
+    func testNewQuizzesExportWithMatchingWarns() {
+        // Canvas's New Quizzes engine renders matching items differently from
+        // Classic Quizzes; the author should be aware before sending.
+        let withMatching = Quiz(
+            title: "T",
+            questions: [
+                QuizQuestion(
+                    type: .matching,
+                    prompt: "Match.",
+                    matches: [MatchingPair(prompt: "A", match: "B")]
+                )
+            ]
+        )
+        let issues = validator.validateExport(of: withMatching, target: .qti21)
+        XCTAssertTrue(issues.contains { $0.severity == QTIValidationIssue.Severity.warning && $0.message.lowercased().contains("matching") })
+    }
 }
