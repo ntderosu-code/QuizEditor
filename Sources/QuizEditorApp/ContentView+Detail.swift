@@ -322,7 +322,7 @@ extension ContentView {
         }
         importPickerContext = ImportPickerContext(
             title: "Import Questions",
-            sourceDescription: "From \(source) — choose which questions to import.",
+            sourceDescription: "From \(source). Choose which questions to import.",
             candidates: importCandidates(for: questions),
             confirmVerb: "Import",
             importedTitle: importedTitle,
@@ -354,7 +354,7 @@ extension ContentView {
             }
 
             let names = urls.map(\.lastPathComponent).joined(separator: ", ")
-            var description = "From \(names) — duplicates are unchecked. Checking a duplicate keeps both copies."
+            var description = "From \(names). Duplicates are unchecked. Checking a duplicate keeps both copies."
             if !failed.isEmpty { description += " Couldn't read: \(failed.joined(separator: ", "))." }
 
             importPickerContext = ImportPickerContext(
@@ -415,7 +415,7 @@ extension ContentView {
             let banks = sections.filter { $0.kind == .questionBank }.count
             importPickerContext = ImportPickerContext(
                 title: "Import from Common Cartridge",
-                sourceDescription: "From \(url.lastPathComponent) — \(sectionSummary(quizzes: quizzes, banks: banks)). Choose which questions to import.",
+                sourceDescription: "From \(url.lastPathComponent). \(sectionSummary(quizzes: quizzes, banks: banks)). Choose which questions to import.",
                 candidates: candidates,
                 confirmVerb: "Import",
                 importedTitle: nil,
@@ -498,7 +498,7 @@ extension ContentView {
     func prepareExport(target: QTIExportTarget) {
         let altIssues = QuizAccessibilityValidator().imagesMissingAltText(in: quiz)
         guard altIssues.isEmpty else {
-            errorMessage = "Export blocked — add alt text first. \(altIssues.joined(separator: "; "))."
+            errorMessage = "Export blocked. Add alt text first. \(altIssues.joined(separator: "; "))."
             return
         }
 

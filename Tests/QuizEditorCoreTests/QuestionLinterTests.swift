@@ -255,6 +255,53 @@ final class QuestionLinterTests: XCTestCase {
         XCTAssertTrue(surveyRules.contains(.duplicateOptions))
     }
 
+    // MARK: - Figure alt text (non-overridable accessibility rule)
+
+    func testFigureMissingAltTextFiresWhenStimulusHasFigureButNoAlt() {
+        let stimulus = Stimulus(
+            id: "s1",
+            kind: .vignette,
+            body: "An X-ray.",
+            figureImage: "data:image/png;base64,AAAA",
+            altText: nil
+        )
+        let question = QuizQuestion(
+            type: .multipleChoice,
+            prompt: "What is shown?",
+            answers: [QuizAnswer(text: "A", isCorrect: true)],
+            stimulusID: "s1"
+        )
+        let context = QuestionLinkContext(linkedStimulus: stimulus)
+        let fired = rules(linter.findings(for: question, persona: .general, context: context))
+        XCTAssertTrue(fired.contains(.figureMissingAltText))
+    }
+
+    func testFigureMissingAltTextDoesNotFireWhenAltPresent() {
+        let stimulus = Stimulus(
+            id: "s1",
+            kind: .vignette,
+            body: "An X-ray.",
+            figureImage: "data:image/png;base64,AAAA",
+            altText: "Chest X-ray, frontal view"
+        )
+        let question = QuizQuestion(
+            type: .multipleChoice,
+            prompt: "What is shown?",
+            answers: [QuizAnswer(text: "A", isCorrect: true)],
+            stimulusID: "s1"
+        )
+        let context = QuestionLinkContext(linkedStimulus: stimulus)
+        let fired = rules(linter.findings(for: question, persona: .general, context: context))
+        XCTAssertFalse(fired.contains(.figureMissingAltText))
+    }
+
+    func testFigureMissingAltTextIsNonOverridable() {
+        // Even with a profile that disables every built-in rule, the figure alt
+        // text rule still fires. CLAUDE.md: "certain linter rules
+        // (accessibility) are non-overridable by personas."
+        XCTAssertTrue(QuestionLinter.nonOverridableRuleIDs.contains(.figureMissingAltText))
+    }
+
     func testSurveyStillFlagsAMissingNumericUnit() {
         // The expected unit is about the question being unambiguous, not about
         // grading, so a persona that requires it still gets the finding in a

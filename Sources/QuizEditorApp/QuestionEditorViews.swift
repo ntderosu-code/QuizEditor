@@ -486,6 +486,8 @@ struct AnswerEditor: View {
             }
             .buttonStyle(.borderless)
             .accessibilityLabel("Remove \(rowName.lowercased())")
+            .frame(minWidth: 28, minHeight: 28)
+            .contentShape(.rect)
         }
         .contextMenu {
             if !usesAcceptedAnswers {
@@ -690,10 +692,12 @@ struct NumericAnswerEditor: View {
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 160)
             }
-            Label("Not sent to your LMS — used only inside QuizEditor (linter and AI). LMS numeric questions grade the number alone.", systemImage: "info.circle")
+            Label("Not sent to your LMS. Used only inside QuizEditor (linter and AI). LMS numeric questions grade the number alone.", systemImage: "info.circle")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Not sent to your LMS. Used only inside Quiz Editor (linter and AI). LMS numeric questions grade the number alone.")
         }
     }
 
@@ -725,6 +729,7 @@ struct MatchingEditor: View {
                 } label: {
                     Label("Add Pair", systemImage: "plus")
                 }
+                .frame(minHeight: 28)
             }
 
             ForEach($matches) { $pair in
@@ -746,6 +751,8 @@ struct MatchingEditor: View {
                     }
                     .buttonStyle(.borderless)
                     .accessibilityLabel("Remove matching pair \(number)")
+                    .frame(minWidth: 28, minHeight: 28)
+                    .contentShape(.rect)
                 }
             }
         }
@@ -767,23 +774,25 @@ struct FormulaAnswerEditor: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Variables")
                         .font(.caption.weight(.semibold))
-                    ForEach($formula.variables) { $variable in
+                    ForEach(Array($formula.variables.enumerated()), id: \.element.id) { index, $variable in
                         HStack(spacing: 6) {
                             TextField("name", text: $variable.name)
                                 .textFieldStyle(.roundedBorder)
                                 .frame(width: 80)
-                                .accessibilityLabel("Variable name")
+                                .accessibilityLabel("Variable \(index + 1) name")
                             TextField("value", value: $variable.value, format: .number)
                                 .textFieldStyle(.roundedBorder)
                                 .frame(width: 80)
-                                .accessibilityLabel("Variable value")
+                                .accessibilityLabel("Variable \(index + 1) value")
                             Button {
                                 formula.variables.removeAll { $0.id == variable.id }
                             } label: {
                                 Image(systemName: "minus.circle")
                             }
                             .buttonStyle(.borderless)
-                            .accessibilityLabel("Remove variable")
+                            .accessibilityLabel("Remove variable \(index + 1)")
+                            .frame(minWidth: 28, minHeight: 28)
+                            .contentShape(.rect)
                         }
                     }
                     Button {
@@ -792,6 +801,7 @@ struct FormulaAnswerEditor: View {
                         Label("Add Variable", systemImage: "plus")
                     }
                     .buttonStyle(.borderless)
+                    .frame(minHeight: 28)
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
@@ -817,6 +827,8 @@ struct FormulaAnswerEditor: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Formula syntax: uses multiply, divide, add, subtract, parentheses, and variable names. For example, open paren a plus b close paren times 2.")
         }
     }
 
@@ -847,6 +859,8 @@ struct FileUploadEditor: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Leave blank to accept any file. Use MIME types separated by commas.")
         }
     }
 }

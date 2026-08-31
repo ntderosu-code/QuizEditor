@@ -246,20 +246,46 @@ public struct QTIImporter: Sendable {
 
     private func parseQTI12Item(_ xml: String) -> QuizQuestion? {
         let canvasType = firstFieldEntry(afterFieldLabel: "question_type", in: xml)
-        let type = questionType(canvasType: canvasType)
+        // An unrecognized question_type (e.g. `text_only_question`,
+        // `categorization_question`, `hot_spot_question`) is dropped here. The
+        // previous default-to-`.multipleChoice` path silently synthesized
+        // content-less questions, which is worse than skipping. See issue #112.
+        guard let type = questionType(canvasType: canvasType) else { return nil }
         let prompt = renderField(matches(pattern: #"<presentation>[\s\S]*?<mattext[^>]*>([\s\S]*?)</mattext>"#, in: xml).first ?? "")
         guard !prompt.isEmpty else { return nil }
+        // The exporter writes the linked stimulus id into a `linked_stimulus_id`
+        // qtimetadata field so the link survives a round-trip. The passage body
+        // is never exported, only the id.
+        let linkedStimulusID = firstFieldEntry(afterFieldLabel: "linked_stimulus_id", in: xml)
 
         if type == .matching {
-            return QuizQuestion(type: .matching, prompt: prompt, matches: classicMatchingPairs(in: xml), feedback: classicFeedback(in: xml))
+            return QuizQuestion(
+                type: .matching,
+                prompt: prompt,
+                matches: classicMatchingPairs(in: xml),
+                feedback: classicFeedback(in: xml),
+                stimulusID: linkedStimulusID
+            )
         }
 
         if type == .numeric {
-            return QuizQuestion(type: .numeric, prompt: prompt, feedback: classicFeedback(in: xml), numeric: parseClassicNumeric(in: xml))
+            return QuizQuestion(
+                type: .numeric,
+                prompt: prompt,
+                feedback: classicFeedback(in: xml),
+                stimulusID: linkedStimulusID,
+                numeric: parseClassicNumeric(in: xml)
+            )
         }
 
         if type == .formula {
-            return QuizQuestion(type: .formula, prompt: prompt, feedback: classicFeedback(in: xml), formula: parseClassicFormula(in: xml))
+            return QuizQuestion(
+                type: .formula,
+                prompt: prompt,
+                feedback: classicFeedback(in: xml),
+                stimulusID: linkedStimulusID,
+                formula: parseClassicFormula(in: xml)
+            )
         }
 
         if type == .fileUpload {
@@ -267,6 +293,7 @@ public struct QTIImporter: Sendable {
                 type: .fileUpload,
                 prompt: prompt,
                 feedback: classicFeedback(in: xml),
+                stimulusID: linkedStimulusID,
                 allowedFileTypes: parseClassicFileUploadMimes(in: xml)
             )
         }
@@ -275,7 +302,13 @@ public struct QTIImporter: Sendable {
         let answers = matches(pattern: #"<response_label\s+ident=\"([^\"]+)\"[^>]*>[\s\S]*?<mattext[^>]*>([\s\S]*?)</mattext>"#, in: xml, groupCount: 2)
             .map { QuizAnswer(text: renderField($0[1]), isCorrect: correctIDs.contains($0[0])) }
 
-        return QuizQuestion(type: type, prompt: prompt, answers: answers, feedback: classicFeedback(in: xml))
+        return QuizQuestion(
+            type: type,
+            prompt: prompt,
+            answers: answers,
+            feedback: classicFeedback(in: xml),
+            stimulusID: linkedStimulusID
+        )
     }
 
     private func parseQTI21Item(_ xml: String) -> QuizQuestion? {
@@ -294,9 +327,12 @@ public struct QTIImporter: Sendable {
         }
 
         if xml.contains("uploadInteraction") {
+            // IMS QTI 2.1 specifies a space-separated list, but Canvas and older
+            // packages may have emitted commas. Accept both for round-trip
+            // forgiveness.
             let mimes = matches(pattern: #"expectedMimeTypes=\"([^\"]+)\""#, in: xml)
                 .first?
-                .split(separator: ",")
+                .split(whereSeparator: { $0 == " " || $0 == "," })
                 .map { String($0).trimmingCharacters(in: .whitespaces) }
                 .filter { !$0.isEmpty } ?? []
             return QuizQuestion(type: .fileUpload, prompt: prompt, feedback: qti21Feedback(in: xml), allowedFileTypes: Array(mimes))
@@ -372,8 +408,9 @@ public struct QTIImporter: Sendable {
         return NumericAnswer(mode: .exact, value: value, margin: 0)
     }
 
-    private func questionType(canvasType: String?) -> QuizQuestionType {
+    private func questionType(canvasType: String?) -> QuizQuestionType? {
         switch canvasType {
+        case "multiple_choice_question": return .multipleChoice
         case "multiple_answers_question": return .multipleAnswer
         case "true_false_question": return .trueFalse
         case "fill_in_the_blank_question": return .fillInBlank
@@ -383,7 +420,11 @@ public struct QTIImporter: Sendable {
         case "numerical_question": return .numeric
         case "file_upload_question": return .fileUpload
         case "calculated_question", "formula_question": return .formula
-        default: return .multipleChoice
+        // text_only_question, categorization_question, hot_spot_question, and
+        // any future Canvas type we don't model yet return nil so the item is
+        // dropped at import rather than synthesized as a content-less multiple
+        // choice. See issue #112.
+        default: return nil
         }
     }
 

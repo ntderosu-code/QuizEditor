@@ -99,7 +99,10 @@ final class LinkingModelTests: XCTestCase {
 
     func testLinkingMetadataIsNotWrittenIntoQTIExport() throws {
         // Linking is author metadata. The acceptance criterion requires it never
-        // appear in a QTI/Common Cartridge export.
+        // appear in a QTI/Common Cartridge export, with one exception: the
+        // stimulus id is exported (in a `linked_stimulus_id` qtimetadata field)
+        // so the link survives a round-trip inside Quiz Editor. The passage
+        // body, source citation, and other linking fields stay out.
         let quiz = Quiz(
             title: "Exported",
             questions: [
@@ -125,9 +128,33 @@ final class LinkingModelTests: XCTestCase {
         let package = try QTIExporter(target: .qti12).makePackage(for: quiz)
         let everything = package.files.map(\.contents).joined(separator: "\n")
 
-        for token in ["OBJECTIVE_TOKEN", "COMPETENCY_TOKEN", "SOURCE_TOKEN", "STIMULUS_TOKEN",
+        // The id is allowed to round-trip; the body and every other field are not.
+        for token in ["OBJECTIVE_TOKEN", "COMPETENCY_TOKEN", "SOURCE_TOKEN",
                       "MISCONCEPTION_TOKEN", "STIMULUS_BODY_TOKEN", "SOURCE_CITATION_TOKEN"] {
             XCTAssertFalse(everything.contains(token), "\(token) leaked into the QTI export")
         }
+        // The id is exported explicitly.
+        XCTAssertTrue(everything.contains("STIMULUS_TOKEN"), "Stimulus id should round-trip via linked_stimulus_id")
+    }
+
+    func testStimulusIDRoundTripsThroughQTIExport() throws {
+        // The id round-trips; the body does not. This is the v1 contract: the
+        // link survives, the passage body stays inside the original document.
+        let quiz = Quiz(
+            title: "Vignette quiz",
+            questions: [
+                QuizQuestion(
+                    type: .multipleChoice,
+                    prompt: "What does the vignette show?",
+                    answers: [QuizAnswer(text: "A", isCorrect: true)],
+                    stimulusID: "vignette-1"
+                )
+            ]
+        )
+        let exporter = QTIExporter(target: .qti12)
+        let package = try exporter.makePackage(for: quiz)
+        let item = try XCTUnwrap(package.file(named: "items/question-1.xml")).contents
+        XCTAssertTrue(item.contains("linked_stimulus_id"))
+        XCTAssertTrue(item.contains("vignette-1"))
     }
 }

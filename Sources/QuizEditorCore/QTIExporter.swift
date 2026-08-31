@@ -539,7 +539,10 @@ public struct QTIExporter: Sendable {
         let mimes = question.allowedFileTypes
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
-        let mimeAttribute = mimes.isEmpty ? "" : " expectedMimeTypes=\"\(xmlEscape(mimes.joined(separator: ",")))\""
+        // IMS QTI 2.1 specifies a space-separated list of MIME types for
+        // `expectedMimeTypes`. Canvas accepts both space and comma, but other
+        // LMSes are stricter; use the spec-conformant separator.
+        let mimeAttribute = mimes.isEmpty ? "" : " expectedMimeTypes=\"\(xmlEscape(mimes.joined(separator: " ")))\""
         return """
             <itemBody>
                 <div>\(inlineXHTML(question.prompt))</div>
@@ -821,17 +824,23 @@ public struct QTIExporter: Sendable {
         formatQTINumber(value)
     }
 
-    /// The only per-item metadata the package carries: the formula spec.
+    /// The per-item metadata the package carries: the formula spec and the
+    /// linked stimulus id.
     ///
     /// Formula items need the expression and variable values so Canvas can
     /// re-evaluate the answer server-side, which makes this answer-key data, not
     /// authoring notes.
     ///
-    /// Author metadata is deliberately absent. Tags, difficulty, and the linking
-    /// fields (objectives, sources, stimuli, competencies) are tool-only: they
-    /// describe how the author works, not how the item is graded, and no importer
-    /// reads them back. Writing them only leaked authoring notes into a file
-    /// handed to an LMS.
+    /// Author metadata is deliberately absent. Tags, difficulty, the linking
+    /// fields (objectives, sources, competencies), and the stimulus body are
+    /// tool-only: they describe how the author works, not how the item is
+    /// graded, and writing them only leaks authoring notes into a file handed
+    /// to an LMS.
+    ///
+    /// The exception is the stimulus id: emitting it lets a `Quiz Editor`
+    /// round-trip restore the `stimulusID` link on import, so the author keeps
+    /// the link to the passage inside their own document. The passage body is
+    /// still never exported.
     private func metadataFields(for question: QuizQuestion) -> String {
         var fields: [String] = []
         if let formula = question.formula {
@@ -843,6 +852,15 @@ public struct QTIExporter: Sendable {
                         <qtimetadatafield>
                             <fieldlabel>formula_question</fieldlabel>
                             <fieldentry><formula>\(xmlEscape(formula.expression))<variables>\(variablesXML)</variables></formula></fieldentry>
+                        </qtimetadatafield>
+            """)
+        }
+        if let stimulusID = question.stimulusID, !stimulusID.isEmpty {
+            fields.append("""
+
+                        <qtimetadatafield>
+                            <fieldlabel>linked_stimulus_id</fieldlabel>
+                            <fieldentry>\(xmlEscape(stimulusID))</fieldentry>
                         </qtimetadatafield>
             """)
         }

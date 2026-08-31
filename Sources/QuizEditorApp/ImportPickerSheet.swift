@@ -239,12 +239,17 @@ private struct ImportCandidateRow: View {
                                 .lineLimit(1)
                         }
                         if candidate.isDuplicate {
-                            Text("Already in quiz")
-                                .font(.caption2.weight(.semibold))
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 1)
-                                .background(Color.orange.opacity(0.18))
-                                .clipShape(.capsule)
+                            HStack(spacing: 4) {
+                                Image(systemName: "exclamationmark.circle.fill")
+                                    .accessibilityHidden(true)
+                                Text("Already in quiz")
+                            }
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.orange)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 1)
+                            .background(Color.orange.opacity(0.18))
+                            .clipShape(.capsule)
                         }
                     }
                 }

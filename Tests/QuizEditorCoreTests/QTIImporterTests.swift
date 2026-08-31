@@ -613,4 +613,100 @@ final class QTIImporterTests: XCTestCase {
         }
         return dir
     }
+
+    // MARK: - Unsupported types (text_only, categorization, hot_spot)
+
+    func testTextOnlyQuestionIsSkippedNotCorrupted() throws {
+        // Canvas's `text_only_question` is a section heading, not a real item.
+        // The importer must drop it, not synthesize a content-less multiple choice.
+        // Importing a package with a mix of supported and unsupported items
+        // returns only the supported ones.
+        let supported = """
+        <item ident="q1" title="q1">
+          <itemmetadata><qtimetadata>
+            <qtimetadatafield><fieldlabel>question_type</fieldlabel><fieldentry>multiple_choice_question</fieldentry></qtimetadatafield>
+            <qtimetadatafield><fieldlabel>points_possible</fieldlabel><fieldentry>1</fieldentry></qtimetadatafield>
+          </qtimetadata></itemmetadata>
+          <presentation>
+            <material><mattext texttype="text/html">Real Q</mattext></material>
+            <response_lid ident="response1" rcardinality="Single"><render_choice>
+              <response_label ident="a"><material><mattext texttype="text/html">A</mattext></material></response_label>
+            </render_choice></response_lid>
+          </presentation>
+          <resprocessing><outcomes><decvar/></outcomes><respcondition><conditionvar><varequal respident="response1">a</varequal></conditionvar></respcondition></resprocessing>
+        </item>
+        """
+        let unsupported = """
+        <item ident="q2" title="q2">
+          <itemmetadata><qtimetadata>
+            <qtimetadatafield><fieldlabel>question_type</fieldlabel><fieldentry>text_only_question</fieldentry></qtimetadatafield>
+          </qtimetadata></itemmetadata>
+          <presentation>
+            <material><mattext texttype="text/html">Section 1: Cell Biology</mattext></material>
+          </presentation>
+        </item>
+        """
+        let manifest = """
+        <manifest><resources>
+          <resource identifier="r1" type="imsqti_xmlv1p2/imscc_xmlv1p1/assessment" href="quiz1.xml"><file href="quiz1.xml"/></resource>
+        </resources></manifest>
+        """
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let quiz = "<questestinterop><assessment ident=\"a1\" title=\"Mixed\"><section ident=\"root\">\(supported)\(unsupported)</section></assessment></questestinterop>"
+        try quiz.write(to: dir.appendingPathComponent("quiz1.xml"), atomically: true, encoding: .utf8)
+        try manifest.write(to: dir.appendingPathComponent("imsmanifest.xml"), atomically: true, encoding: .utf8)
+
+        let sections = try QTIImporter().importSections(fromDirectory: dir)
+        let questions = sections.flatMap(\.questions)
+        XCTAssertEqual(questions.count, 1, "Only the supported MC should be imported; the text_only_question is dropped")
+        XCTAssertEqual(questions.first?.type, .multipleChoice)
+        XCTAssertEqual(questions.first?.prompt, "Real Q")
+    }
+
+    func testUnknownQuestionTypeIsSkipped() throws {
+        // A future Canvas type we don't yet model — same treatment: skip rather
+        // than corrupt. Use a mixed package so the import doesn't fail outright.
+        let supported = """
+        <item ident="q1" title="q1">
+          <itemmetadata><qtimetadata>
+            <qtimetadatafield><fieldlabel>question_type</fieldlabel><fieldentry>essay_question</fieldentry></qtimetadatafield>
+            <qtimetadatafield><fieldlabel>points_possible</fieldlabel><fieldentry>5</fieldentry></qtimetadatafield>
+          </qtimetadata></itemmetadata>
+          <presentation>
+            <material><mattext texttype="text/html">Real essay</mattext></material>
+            <response_str ident="response1" rcardinality="Single">
+              <render_fib fibtype="String" prompt="Box" rows="8" columns="80"/>
+            </response_str>
+          </presentation>
+        </item>
+        """
+        let unsupported = """
+        <item ident="q2" title="q2">
+          <itemmetadata><qtimetadata>
+            <qtimetadatafield><fieldlabel>question_type</fieldlabel><fieldentry>hot_spot_question</fieldentry></qtimetadatafield>
+          </qtimetadata></itemmetadata>
+          <presentation>
+            <material><mattext texttype="text/html">Click on the nucleus.</mattext></material>
+          </presentation>
+        </item>
+        """
+        let manifest = """
+        <manifest><resources>
+          <resource identifier="r1" type="imsqti_xmlv1p2/imscc_xmlv1p1/assessment" href="quiz1.xml"><file href="quiz1.xml"/></resource>
+        </resources></manifest>
+        """
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let quiz = "<questestinterop><assessment ident=\"a1\" title=\"Mixed\"><section ident=\"root\">\(supported)\(unsupported)</section></assessment></questestinterop>"
+        try quiz.write(to: dir.appendingPathComponent("quiz1.xml"), atomically: true, encoding: .utf8)
+        try manifest.write(to: dir.appendingPathComponent("imsmanifest.xml"), atomically: true, encoding: .utf8)
+
+        let sections = try QTIImporter().importSections(fromDirectory: dir)
+        let questions = sections.flatMap(\.questions)
+        XCTAssertEqual(questions.count, 1, "hot_spot_question is not modeled and should be skipped")
+        XCTAssertEqual(questions.first?.type, .essay)
+    }
 }

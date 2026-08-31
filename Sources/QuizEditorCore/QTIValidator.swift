@@ -43,7 +43,8 @@ public struct QTIValidator: Sendable {
         return issues
     }
 
-    /// Warns about authoring detail the chosen QTI standard cannot carry.
+    /// Warns about authoring detail the chosen QTI standard cannot carry, or
+    /// about combinations the target engine may not handle well.
     ///
     /// QTI 1.2 has `qtimetadata`, an open key/value area where the exporter
     /// stores a formula's expression and variables, so a formula survives a
@@ -53,19 +54,46 @@ public struct QTIValidator: Sendable {
     /// the formula itself. The author usually has a lossless option one menu
     /// item away, so it is worth saying so.
     ///
+    /// Survey items are a Canvas Classic feature; the New Quizzes engine has
+    /// no survey type, so exporting a survey to `.qti21` is a no-op for the
+    /// survey flag. New Quizzes also renders matching items differently from
+    /// Classic Quizzes (drag-and-drop vs dropdown), which the author should
+    /// know before sending.
+    ///
     /// Advisory only, per the project rule that validation never blocks an
     /// export: this is always a warning, never an error.
     public func formatFidelityIssues(of quiz: Quiz, target: QTIExportTarget) -> [QTIValidationIssue] {
-        guard target == .qti21 else { return [] }
+        var issues: [QTIValidationIssue] = []
 
-        let formulaCount = quiz.questions.filter { $0.type == .formula }.count
-        guard formulaCount > 0 else { return [] }
+        switch target {
+        case .qti21:
+            let formulaCount = quiz.questions.filter { $0.type == .formula }.count
+            if formulaCount > 0 {
+                let subject = formulaCount == 1 ? "1 formula question" : "\(formulaCount) formula questions"
+                issues.append(QTIValidationIssue(
+                    severity: .warning,
+                    message: "QTI 2.1 has no place to store a formula expression, so \(subject) will export with the computed answer key but without the formula. Export as QTI 1.2 (Classic Quizzes) to keep the expression and its variables."
+                ))
+            }
+            let matchingCount = quiz.questions.filter { $0.type == .matching }.count
+            if matchingCount > 0 {
+                let subject = matchingCount == 1 ? "1 matching question" : "\(matchingCount) matching questions"
+                issues.append(QTIValidationIssue(
+                    severity: .warning,
+                    message: "New Quizzes renders matching items as drag-and-drop rather than the dropdown used by Classic Quizzes. \(subject) will display differently in the receiving engine."
+                ))
+            }
+            if quiz.kind == .survey {
+                issues.append(QTIValidationIssue(
+                    severity: .warning,
+                    message: "Canvas Surveys are a Classic Quizzes feature. Exporting a survey to New Quizzes will lose the survey flag. Export as QTI 1.2 (Surveys) to keep the survey semantics."
+                ))
+            }
+        case .qti12, .qti12Survey:
+            break
+        }
 
-        let subject = formulaCount == 1 ? "1 formula question" : "\(formulaCount) formula questions"
-        return [QTIValidationIssue(
-            severity: .warning,
-            message: "QTI 2.1 has no place to store a formula expression, so \(subject) will export with the computed answer key but without the formula. Export as QTI 1.2 (Classic Quizzes) to keep the expression and its variables."
-        )]
+        return issues
     }
 
     /// Checks that every file in the package parses as well-formed XML.
