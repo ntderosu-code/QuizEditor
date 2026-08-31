@@ -256,7 +256,12 @@ public struct QTIImporter: Sendable {
         // The exporter writes the linked stimulus id into a `linked_stimulus_id`
         // qtimetadata field so the link survives a round-trip. The passage body
         // is never exported, only the id.
+        // Unescape to match the exporter, which XML-escapes the id, and treat an
+        // empty entry as no link so a blank field doesn't look like a real
+        // stimulus to the linter's `requiresStimulus` rules.
         let linkedStimulusID = firstFieldEntry(afterFieldLabel: "linked_stimulus_id", in: xml)
+            .map(xmlUnescape)
+            .flatMap { $0.isEmpty ? nil : $0 }
 
         if type == .matching {
             return QuizQuestion(
@@ -410,6 +415,12 @@ public struct QTIImporter: Sendable {
 
     private func questionType(canvasType: String?) -> QuizQuestionType? {
         switch canvasType {
+        // A package with no `question_type` metadata at all is not a Canvas
+        // export: Blackboard, Moodle, Respondus, and D2L all write plain QTI 1.2
+        // items. Those are overwhelmingly `<response_lid>` choice items, so keep
+        // the historical inference rather than dropping every question and
+        // failing the import with "no supported questions found."
+        case nil: return .multipleChoice
         case "multiple_choice_question": return .multipleChoice
         case "multiple_answers_question": return .multipleAnswer
         case "true_false_question": return .trueFalse
@@ -420,10 +431,10 @@ public struct QTIImporter: Sendable {
         case "numerical_question": return .numeric
         case "file_upload_question": return .fileUpload
         case "calculated_question", "formula_question": return .formula
-        // text_only_question, categorization_question, hot_spot_question, and
-        // any future Canvas type we don't model yet return nil so the item is
-        // dropped at import rather than synthesized as a content-less multiple
-        // choice. See issue #112.
+        // A present-but-unrecognized type (text_only_question,
+        // categorization_question, hot_spot_question, and any future Canvas type
+        // we don't model yet) returns nil so the item is dropped at import rather
+        // than synthesized as a content-less multiple choice. See issue #112.
         default: return nil
         }
     }

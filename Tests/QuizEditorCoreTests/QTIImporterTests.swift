@@ -709,4 +709,39 @@ final class QTIImporterTests: XCTestCase {
         XCTAssertEqual(questions.count, 1, "hot_spot_question is not modeled and should be skipped")
         XCTAssertEqual(questions.first?.type, .essay)
     }
+
+    func testQTI12ItemWithNoQuestionTypeMetadataStillImports() throws {
+        // Blackboard, Moodle, Respondus, and D2L write plain QTI 1.2 with no
+        // Canvas `question_type` qtimetadata. Dropping those items would fail the
+        // whole import with "no supported quiz questions were found."
+        let item = """
+        <item ident="q1" title="q1">
+          <presentation>
+            <material><mattext texttype="text/html">Which organelle makes ATP?</mattext></material>
+            <response_lid ident="response1" rcardinality="Single"><render_choice>
+              <response_label ident="a"><material><mattext texttype="text/html">Mitochondrion</mattext></material></response_label>
+              <response_label ident="b"><material><mattext texttype="text/html">Ribosome</mattext></material></response_label>
+            </render_choice></response_lid>
+          </presentation>
+          <resprocessing><outcomes><decvar/></outcomes><respcondition><conditionvar><varequal respident="response1">a</varequal></conditionvar></respcondition></resprocessing>
+        </item>
+        """
+        let manifest = """
+        <manifest><resources>
+          <resource identifier="r1" type="imsqti_xmlv1p2/imscc_xmlv1p1/assessment" href="quiz1.xml"><file href="quiz1.xml"/></resource>
+        </resources></manifest>
+        """
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let quiz = "<questestinterop><assessment ident=\"a1\" title=\"Generic\"><section ident=\"root\">\(item)</section></assessment></questestinterop>"
+        try quiz.write(to: dir.appendingPathComponent("quiz1.xml"), atomically: true, encoding: .utf8)
+        try manifest.write(to: dir.appendingPathComponent("imsmanifest.xml"), atomically: true, encoding: .utf8)
+
+        let questions = try QTIImporter().importSections(fromDirectory: dir).flatMap(\.questions)
+        XCTAssertEqual(questions.count, 1, "A plain QTI 1.2 item must not be dropped for lacking Canvas metadata")
+        XCTAssertEqual(questions.first?.type, .multipleChoice)
+        XCTAssertEqual(questions.first?.answers.count, 2)
+        XCTAssertNil(questions.first?.stimulusID, "No linked_stimulus_id field means no link")
+    }
 }

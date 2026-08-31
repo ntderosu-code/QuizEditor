@@ -482,12 +482,15 @@ struct AnswerEditor: View {
             Button(role: .destructive) {
                 question.answers.removeAll { $0.id == answer.wrappedValue.id }
             } label: {
+                // The hit frame belongs on the button's label: a .frame applied
+                // outside the Button grows the layout slot but not the area that
+                // actually accepts a click.
                 Image(systemName: "minus.circle")
+                    .frame(width: 28, height: 28)
+                    .contentShape(.rect)
             }
             .buttonStyle(.borderless)
             .accessibilityLabel("Remove \(rowName.lowercased())")
-            .frame(minWidth: 28, minHeight: 28)
-            .contentShape(.rect)
         }
         .contextMenu {
             if !usesAcceptedAnswers {
@@ -728,8 +731,9 @@ struct MatchingEditor: View {
                     matches.append(MatchingPair(prompt: "", match: ""))
                 } label: {
                     Label("Add Pair", systemImage: "plus")
+                        .frame(minHeight: 28)
+                        .contentShape(.rect)
                 }
-                .frame(minHeight: 28)
             }
 
             ForEach($matches) { $pair in
@@ -748,11 +752,11 @@ struct MatchingEditor: View {
                         matches.removeAll { $0.id == pair.id }
                     } label: {
                         Image(systemName: "minus.circle")
+                            .frame(width: 28, height: 28)
+                            .contentShape(.rect)
                     }
                     .buttonStyle(.borderless)
                     .accessibilityLabel("Remove matching pair \(number)")
-                    .frame(minWidth: 28, minHeight: 28)
-                    .contentShape(.rect)
                 }
             }
         }
@@ -788,20 +792,21 @@ struct FormulaAnswerEditor: View {
                                 formula.variables.removeAll { $0.id == variable.id }
                             } label: {
                                 Image(systemName: "minus.circle")
+                                    .frame(width: 28, height: 28)
+                                    .contentShape(.rect)
                             }
                             .buttonStyle(.borderless)
                             .accessibilityLabel("Remove variable \(index + 1)")
-                            .frame(minWidth: 28, minHeight: 28)
-                            .contentShape(.rect)
                         }
                     }
                     Button {
                         formula.variables.append(FormulaVariable(name: "", value: 0))
                     } label: {
                         Label("Add Variable", systemImage: "plus")
+                            .frame(minHeight: 28)
+                            .contentShape(.rect)
                     }
                     .buttonStyle(.borderless)
-                    .frame(minHeight: 28)
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
