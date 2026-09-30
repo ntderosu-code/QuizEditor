@@ -201,9 +201,18 @@ public struct QTIImporter: Sendable {
             throw ImportError.missingUnzipExecutable
         }
 
+        // Under the App Sandbox, `unzip` runs as a child process that may not
+        // share this app's access to the file the user picked. Copying the
+        // archive into our own temporary directory first means `unzip` only
+        // ever touches files inside the app's container.
+        let archiveCopyURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString + ".zip")
+        try FileManager.default.copyItem(at: archiveURL, to: archiveCopyURL)
+        defer { try? FileManager.default.removeItem(at: archiveCopyURL) }
+
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
-        process.arguments = ["-qq", archiveURL.path, "-d", directoryURL.path]
+        process.arguments = ["-qq", archiveCopyURL.path, "-d", directoryURL.path]
         try process.run()
         process.waitUntilExit()
 
