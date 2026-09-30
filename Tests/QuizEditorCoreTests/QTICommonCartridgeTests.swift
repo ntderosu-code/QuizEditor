@@ -67,6 +67,27 @@ final class QTICommonCartridgeTests: XCTestCase {
         XCTAssertEqual(bankSection.questions.first?.prompt, "What gas do plants absorb?")
     }
 
+    func testImportsQuizAndBankSectionsFromIMSCCArchive() throws {
+        let sourceDirectory = try makeCartridge()
+        defer { try? FileManager.default.removeItem(at: sourceDirectory) }
+
+        let archiveURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".imscc")
+        defer { try? FileManager.default.removeItem(at: archiveURL) }
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/zip")
+        process.currentDirectoryURL = sourceDirectory
+        process.arguments = ["-qr", archiveURL.path, "."]
+        try process.run()
+        process.waitUntilExit()
+        XCTAssertEqual(process.terminationStatus, 0)
+
+        let sections = try QTIImporter().importSections(fromZipAt: archiveURL)
+
+        XCTAssertEqual(sections.map(\.title), ["Quiz One", "Bank One"])
+        XCTAssertEqual(sections.flatMap(\.questions).count, 3)
+    }
+
     func testIgnoresNonQuizResources() throws {
         let dir = try makeCartridge()
         defer { try? FileManager.default.removeItem(at: dir) }

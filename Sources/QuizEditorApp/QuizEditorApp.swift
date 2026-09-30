@@ -477,7 +477,7 @@ struct ContentView: View {
         .focusedSceneValue(\.quizCommandActions, makeCommandActions())
         .focusedSceneValue(\.quizDocumentActions, makeDocumentActions())
         .dropDestination(for: URL.self) { urls, _ in
-            handleDroppedFiles(urls)
+            return handleDroppedFiles(urls)
         }
         .alert(
             errorTitle ?? "Something Went Wrong",

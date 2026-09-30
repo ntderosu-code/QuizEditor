@@ -32,7 +32,7 @@ struct FrameworkManagementSheet: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Competency and standards frameworks your questions can link to, for coverage reporting. Frameworks are author metadata — local only, never exported.")
+                    Text("Competency and standards frameworks your questions can link to, for coverage reporting. Frameworks are author metadata. Local only, never exported.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -125,7 +125,7 @@ struct FrameworkManagementSheet: View {
             let warning = result.warnings.isEmpty ? "" : " " + result.warnings.joined(separator: " ")
             notice = "Imported “\(framework.name).”" + warning
         } catch {
-            notice = "Couldn't import that file — it isn't a valid framework."
+            notice = "Couldn't import that file. It isn't a valid framework."
         }
     }
 }
@@ -448,7 +448,7 @@ struct CoverageReportSheet: View {
                                         }
                                         Text(row.node.displayLabel)
                                         Spacer()
-                                        Text(row.questionCount == 0 ? "Gap — 0 items" : "\(row.questionCount) item\(row.questionCount == 1 ? "" : "s")")
+                                        Text(row.questionCount == 0 ? "Gap: 0 items" : "\(row.questionCount) item\(row.questionCount == 1 ? "" : "s")")
                                             .font(.callout)
                                             .foregroundStyle(row.questionCount == 0 ? .orange : .secondary)
                                     }

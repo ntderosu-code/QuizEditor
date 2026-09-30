@@ -78,8 +78,9 @@ cat > "$CONTENTS_DIR/Info.plist" <<PLIST
 </plist>
 PLIST
 
-echo "▸ Code signing with hardened runtime…"
+echo "▸ Code signing with hardened runtime and App Sandbox…"
 codesign --force --options runtime --timestamp \
+    --entitlements "$ROOT_DIR/Resources/QuizEditor.entitlements" \
     --sign "$SIGN_ID" "$APP_BUNDLE"
 codesign --verify --strict --verbose=2 "$APP_BUNDLE"
 

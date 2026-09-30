@@ -109,17 +109,28 @@ public struct QuizAccessibilityValidator: Sendable {
     public init() {}
 
     /// Returns a human-readable issue for each question whose content includes an
-    /// image without alt text. An empty result means the quiz passes.
+    /// image without alt text, plus each stimulus whose attached figure is
+    /// missing alt text. An empty result means the quiz passes the gate.
     public func imagesMissingAltText(in quiz: Quiz) -> [String] {
-        quiz.questions.enumerated().compactMap { index, question in
+        var issues: [String] = []
+        for (index, question) in quiz.questions.enumerated() {
             let fields = [question.prompt, question.feedback]
                 + question.answers.map(\.text)
                 + question.matches.flatMap { [$0.prompt, $0.match] }
             let missing = fields.reduce(0) { $0 + html.imagesMissingAlt(in: $1) }
-            guard missing > 0 else { return nil }
-            let title = html.plainText(fromHTML: question.prompt).prefix(50)
-            let label = title.isEmpty ? "Question \(index + 1)" : "Question \(index + 1) (\(title)…)"
-            return "\(label): \(missing) image\(missing == 1 ? "" : "s") missing alt text"
+            if missing > 0 {
+                let title = html.plainText(fromHTML: question.prompt).prefix(50)
+                let label = title.isEmpty ? "Question \(index + 1)" : "Question \(index + 1) (\(title)…)"
+                issues.append("\(label): \(missing) image\(missing == 1 ? "" : "s") missing alt text")
+            }
         }
+        // Stimulus figures also require alt text — a question stem with no image
+        // is fine, but a stimulus with an attached figure and no alt text blocks
+        // the export. CLAUDE.md: "figures require alt text."
+        for (index, stimulus) in quiz.stimuli.enumerated() where stimulus.figureNeedsAltText {
+            let label = "Stimulus \(index + 1)"
+            issues.append("\(label): figure is missing alt text")
+        }
+        return issues
     }
 }
