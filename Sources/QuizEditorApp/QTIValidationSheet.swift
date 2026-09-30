@@ -77,7 +77,7 @@ struct QTIValidationSheet: View {
 
     private var summary: String {
         if hasErrors {
-            return "The \(targetName) package has problems that may keep it from importing cleanly into Canvas or another LMS. Review them below — you can export anyway, but fixing them first is recommended."
+            return "The \(targetName) package has problems that may keep it from importing cleanly into Canvas or another LMS. Review them below. You can export anyway, but fixing them first is recommended."
         }
         return "The \(targetName) package re-imported cleanly. These notes are informational."
     }

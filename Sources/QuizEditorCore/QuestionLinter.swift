@@ -33,6 +33,7 @@ public struct LintFinding: Equatable, Sendable, Identifiable {
         public static let recallDrift = Rule("recallDrift")
         public static let noCompetencyLinked = Rule("noCompetencyLinked")
         public static let numericMissingUnit = Rule("numericMissingUnit")
+        public static let figureMissingAltText = Rule("figureMissingAltText")
     }
 
     public let rule: Rule
@@ -59,9 +60,11 @@ public struct LintFinding: Equatable, Sendable, Identifiable {
 /// API; the quiz-wide API builds it from the quiz's entity tables.
 public struct QuestionLinkContext: Sendable, Equatable {
     public var linkedObjectives: [LearningObjective]
+    public var linkedStimulus: Stimulus?
 
-    public init(linkedObjectives: [LearningObjective] = []) {
+    public init(linkedObjectives: [LearningObjective] = [], linkedStimulus: Stimulus? = nil) {
         self.linkedObjectives = linkedObjectives
+        self.linkedStimulus = linkedStimulus
     }
 
     public static let empty = QuestionLinkContext()
@@ -93,10 +96,11 @@ public struct QuestionLinter: Sendable {
 
     public init() {}
 
-    /// Built-in rules a persona can never disable or down-weight. Accessibility
-    /// checks (alt text, accessible language) are platform rules and belong here
-    /// once they land; the current built-ins are all overridable.
-    public static let nonOverridableRuleIDs: Set<LintFinding.Rule> = []
+    /// Built-in rules a persona can never disable or down-weight. CLAUDE.md:
+    /// "certain linter rules (accessibility) are non-overridable by personas."
+    /// Figure alt text is the first rule on that list — the platform contract
+    /// is that figures must have alt text, and a persona cannot silence it.
+    public static let nonOverridableRuleIDs: Set<LintFinding.Rule> = [.figureMissingAltText]
 
     /// Findings for one question with the General persona (today's behavior).
     public func findings(for question: QuizQuestion) -> [LintFinding] {
@@ -126,6 +130,11 @@ public struct QuestionLinter: Sendable {
         if let lengthBias = lengthBiasFinding(question) { builtIn.append(lengthBias) }
         if let article = articleCueFinding(question) { builtIn.append(article) }
         if kind == .graded, let feedback = missingFeedbackFinding(question) { builtIn.append(feedback) }
+        // Accessibility checks: figure alt text is platform contract, fires for
+        // every kind (graded or survey) and is non-overridable.
+        if let figureIssue = figureMissingAltTextFinding(context: context) {
+            builtIn.append(figureIssue)
+        }
 
         var findings = applyOverrides(builtIn, profile: persona.linterProfile)
         findings.append(contentsOf: declarativeFindings(question, profile: persona.linterProfile))
@@ -168,11 +177,13 @@ public struct QuestionLinter: Sendable {
     /// a survey skips answer-key and missing-feedback rules.
     public func findings(for quiz: Quiz, persona: Persona) -> [QuizQuestion.ID: [LintFinding]] {
         let objectivesByID = Dictionary(quiz.objectives.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let stimuliByID = Dictionary(quiz.stimuli.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
 
         var result: [QuizQuestion.ID: [LintFinding]] = [:]
         for question in quiz.questions {
             let context = QuestionLinkContext(
-                linkedObjectives: question.objectiveIDs.compactMap { objectivesByID[$0] }
+                linkedObjectives: question.objectiveIDs.compactMap { objectivesByID[$0] },
+                linkedStimulus: question.stimulusID.flatMap { stimuliByID[$0] }
             )
             let questionFindings = findings(for: question, persona: persona, context: context, kind: quiz.kind)
             if !questionFindings.isEmpty {
@@ -341,6 +352,18 @@ public struct QuestionLinter: Sendable {
             severity: .suggestion,
             message: "This item is linked to a higher-order objective but the stem only asks for recall.",
             suggestion: "Raise the task to match the objective (apply, analyze, or evaluate), or link a recall-level objective."
+        )
+    }
+
+    /// A stimulus figure with no alt text is an accessibility violation.
+    /// This rule is non-overridable by personas — see `nonOverridableRuleIDs`.
+    private func figureMissingAltTextFinding(context: QuestionLinkContext) -> LintFinding? {
+        guard let stimulus = context.linkedStimulus, stimulus.figureNeedsAltText else { return nil }
+        return LintFinding(
+            rule: .figureMissingAltText,
+            severity: .warning,
+            message: "This question links to a stimulus with a figure that has no alt text.",
+            suggestion: "Add alt text to the figure on the linked stimulus so screen readers can describe it."
         )
     }
 

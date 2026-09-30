@@ -182,7 +182,7 @@ struct AIAuthoringSheet: View {
 
     private var resultsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Generated questions — review before adding")
+            Text("Generated questions. Review before adding")
                 .font(.headline)
             Text("Each question is reviewed here before it enters your quiz. Edit anything after adding.")
                 .font(.caption)

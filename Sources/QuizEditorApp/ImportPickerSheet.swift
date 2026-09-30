@@ -239,12 +239,20 @@ private struct ImportCandidateRow: View {
                                 .lineLimit(1)
                         }
                         if candidate.isDuplicate {
-                            Text("Already in quiz")
-                                .font(.caption2.weight(.semibold))
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 1)
-                                .background(Color.orange.opacity(0.18))
-                                .clipShape(.capsule)
+                            HStack(spacing: 4) {
+                                // Only the icon carries the color. Orange text on
+                                // an orange tint falls under 4.5:1, so the label
+                                // keeps the primary foreground for contrast.
+                                Image(systemName: "exclamationmark.circle.fill")
+                                    .foregroundStyle(.orange)
+                                    .accessibilityHidden(true)
+                                Text("Already in quiz")
+                            }
+                            .font(.caption2.weight(.semibold))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 1)
+                            .background(Color.orange.opacity(0.18))
+                            .clipShape(.capsule)
                         }
                     }
                 }

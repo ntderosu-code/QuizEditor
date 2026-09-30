@@ -172,7 +172,7 @@ struct RichTextField: View {
             }
 
             if imagesMissingAlt > 0 {
-                Label("\(imagesMissingAlt) image\(imagesMissingAlt == 1 ? "" : "s") missing alt text — add it before exporting.",
+                Label("\(imagesMissingAlt) image\(imagesMissingAlt == 1 ? "" : "s") missing alt text. Add it before exporting.",
                       systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)
                     .foregroundStyle(.orange)
