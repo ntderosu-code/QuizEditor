@@ -56,8 +56,6 @@ struct QuestionDetailsEditor: View {
             .padding(.top, 8)
         } label: {
             Text("Question details")
-                .contentShape(.rect)
-                .onTapGesture { isExpanded.toggle() }
         }
     }
 }

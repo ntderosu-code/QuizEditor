@@ -59,7 +59,7 @@ struct QuickSwitchSheet: View {
                                         .foregroundStyle(.secondary)
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(plainPrompt(entry.question))
-                                            .lineLimit(1)
+                                            .fixedSize(horizontal: false, vertical: true)
                                         Text(entry.question.type.displayName)
                                             .font(.caption)
                                             .foregroundStyle(.secondary)

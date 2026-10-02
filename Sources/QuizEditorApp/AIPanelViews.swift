@@ -319,6 +319,7 @@ struct AIPanel: View {
             .contentShape(.rect)
         }
         .disabled(disabled || (disabledWhenRunning && isRunning))
+        .accessibilityValue(runningAction == id ? "In progress" : "")
 
         // Bordered, not glass: the panel already sits on the sidebar material,
         // and stacking glass on glass is the one thing Liquid Glass rules out

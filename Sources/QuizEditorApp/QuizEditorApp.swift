@@ -607,8 +607,6 @@ struct MarkedTextFormatReference: View {
         } label: {
             Label("Formatting guide", systemImage: "text.book.closed")
                 .font(.subheadline.weight(.semibold))
-                .contentShape(.rect)
-                .onTapGesture { isExpanded.toggle() }
         }
     }
 

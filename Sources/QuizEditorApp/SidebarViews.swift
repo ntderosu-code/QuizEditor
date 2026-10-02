@@ -289,7 +289,6 @@ struct SidebarQuestionRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(plainPrompt)
                     .font(.body)
-                    .lineLimit(2)
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
                 HStack(spacing: 6) {

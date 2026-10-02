@@ -30,6 +30,7 @@ final class RichTextController: ObservableObject {
 struct RichTextEditor: NSViewRepresentable {
     @Binding var html: String
     let controller: RichTextController
+    let accessibilityLabel: String
 
     func makeNSView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
@@ -39,7 +40,7 @@ struct RichTextEditor: NSViewRepresentable {
         webView.navigationDelegate = context.coordinator
         context.coordinator.webView = webView
         controller.webView = webView
-        webView.loadHTMLString(Self.template, baseURL: nil)
+        webView.loadHTMLString(Self.template(accessibilityLabel: accessibilityLabel), baseURL: nil)
         return webView
     }
 
@@ -83,7 +84,14 @@ struct RichTextEditor: NSViewRepresentable {
         }
     }
 
-    private static let template = """
+    private static func template(accessibilityLabel: String) -> String {
+        let escapedLabel = accessibilityLabel
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "\"", with: "&quot;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+
+        return """
     <!DOCTYPE html>
     <html>
     <head>
@@ -104,7 +112,7 @@ struct RichTextEditor: NSViewRepresentable {
     </style>
     </head>
     <body>
-    <div id="editor" contenteditable="true"></div>
+    <div id="editor" contenteditable="true" role="textbox" aria-multiline="true" aria-label="\(escapedLabel)" tabindex="0" spellcheck="true"></div>
     <script>
       const editor = document.getElementById('editor');
       function report() { window.webkit.messageHandlers.changed.postMessage(editor.innerHTML); }
@@ -117,6 +125,7 @@ struct RichTextEditor: NSViewRepresentable {
     </body>
     </html>
     """
+    }
 }
 
 /// WYSIWYG rich text field with a formatting toolbar and enforced image alt text.
@@ -179,7 +188,7 @@ struct RichTextField: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            RichTextEditor(html: $text, controller: controller)
+            RichTextEditor(html: $text, controller: controller, accessibilityLabel: title)
                 .frame(minHeight: minHeight)
                 .background(Color(nsColor: .textBackgroundColor))
                 .clipShape(.rect(cornerRadius: 8))
