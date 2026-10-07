@@ -7,6 +7,13 @@ import QuizEditorCore
 import FoundationModels
 #endif
 
+/// Secondary text for the AI panel. The system `.secondary` style measured 3.8:1
+/// on the panel's gray background (WCAG AA needs 4.5:1), so this uses the label
+/// color at high opacity, which adapts to light and dark mode.
+enum AIPanelStyle {
+    static let secondaryText = Color(nsColor: .labelColor).opacity(0.75)
+}
+
 enum AIPanelScope: String, CaseIterable, Identifiable {
     case wholeQuiz
     case currentQuestion
@@ -96,12 +103,12 @@ struct AIPanel: View {
                 if let status {
                     Label(status.text, systemImage: status.isError ? "exclamationmark.triangle.fill" : "info.circle")
                         .font(.caption)
-                        .foregroundStyle(status.isError ? .orange : .secondary)
+                        .foregroundStyle(status.isError ? .orange : AIPanelStyle.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Label(resultsHint, systemImage: "info.circle")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AIPanelStyle.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.vertical, 24)
@@ -138,11 +145,11 @@ struct AIPanel: View {
                 .font(.title2.bold())
             Text("Use AI to suggest edits, draft feedback, or write new questions.")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(AIPanelStyle.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
             Label("Review profile: \(persona.displayName)", systemImage: "person.crop.rectangle")
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(AIPanelStyle.secondaryText)
                 .accessibilityElement(children: .combine)
         }
     }
@@ -151,7 +158,7 @@ struct AIPanel: View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Provider")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(AIPanelStyle.secondaryText)
             Menu {
                 Picker("Provider", selection: $provider) {
                     ForEach(AIProvider.allCases) { provider in
@@ -189,7 +196,7 @@ struct AIPanel: View {
             )
             Text("Edit this to say what the AI should look at, like \u{201C}tighten the wording\u{201D} or \u{201C}check the answer keys.\u{201D} It applies to the tools below.")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(AIPanelStyle.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -200,7 +207,7 @@ struct AIPanel: View {
         VStack(alignment: .leading, spacing: 4) {
             Text("AI action scope")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(AIPanelStyle.secondaryText)
 
             Picker("AI action scope", selection: $selectedScope) {
                 ForEach(AIPanelScope.allCases) { scope in
@@ -244,7 +251,7 @@ struct AIPanel: View {
             if provider == .foundationModels {
                 Text("Large quizzes run in batches to fit Apple's on-device limit, then combine into one document.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AIPanelStyle.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -271,7 +278,7 @@ struct AIPanel: View {
             sectionHeader(AIPanelScope.currentQuestion.sectionTitle(selectedQuestionNumber: nil))
             Label("Select a question in the sidebar to use question-level AI tools.", systemImage: "questionmark.circle")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(AIPanelStyle.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityElement(children: .combine)
         }
@@ -289,7 +296,7 @@ struct AIPanel: View {
         // shouted section header.
         Text(title)
             .font(.caption.weight(.semibold))
-            .foregroundStyle(.secondary)
+            .foregroundStyle(AIPanelStyle.secondaryText)
             .accessibilityAddTraits(.isHeader)
     }
 
