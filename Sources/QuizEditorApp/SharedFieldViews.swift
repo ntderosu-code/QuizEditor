@@ -39,7 +39,7 @@ struct LabeledTextEditor: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(AIPanelStyle.secondaryText)
             ZStack(alignment: .topLeading) {
                 TextEditor(text: $text)
                     .font(.body)
